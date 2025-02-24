@@ -5,15 +5,27 @@ import math
 from dataclasses import dataclass
 from typing import Optional, Tuple
 
-import fairscale.nn.model_parallel.initialize as fs_init
 import torch
 import torch.nn.functional as F
-from fairscale.nn.model_parallel.layers import (
-    ColumnParallelLinear,
-    ParallelEmbedding,
-    RowParallelLinear,
-)
 from torch import nn
+
+
+class ColumnParallelLinear(torch.nn.Linear):
+    """Fallback for single-device CPU/GPU without fairscale."""
+    def __init__(self, in_features, out_features, bias=True, gather_output=True, init_method=None):
+        super().__init__(in_features, out_features, bias)
+
+class RowParallelLinear(torch.nn.Linear):
+    """Fallback for single-device CPU/GPU without fairscale."""
+    def __init__(self, in_features, out_features, bias=True, input_is_parallel=False, init_method=None):
+        super().__init__(in_features, out_features, bias)
+
+class ParallelEmbedding(torch.nn.Embedding):
+    """Fallback for single-device CPU/GPU without fairscale."""
+    def __init__(self, num_embeddings, embedding_dim, init_method=None):
+        super().__init__(num_embeddings, embedding_dim)
+
+
 
 
 @dataclass
@@ -198,7 +210,7 @@ class Attention(nn.Module):
         """
         super().__init__()
         self.n_kv_heads = args.n_heads if args.n_kv_heads is None else args.n_kv_heads
-        model_parallel_size = fs_init.get_model_parallel_world_size()
+        model_parallel_size = 1
         self.n_local_heads = args.n_heads // model_parallel_size
         self.n_local_kv_heads = self.n_kv_heads // model_parallel_size
         self.n_rep = self.n_local_heads // self.n_local_kv_heads
@@ -240,7 +252,7 @@ class Attention(nn.Module):
                 self.n_local_kv_heads,
                 self.head_dim,
             )
-        ).cuda()
+        )#.cuda() # TODO - reinstate if use GPU
         self.cache_v = torch.zeros(
             (
                 args.max_batch_size,
@@ -248,7 +260,7 @@ class Attention(nn.Module):
                 self.n_local_kv_heads,
                 self.head_dim,
             )
-        ).cuda()
+        )#.cuda() # TODO - reinstate if use GPU
 
     def forward(
         self,
