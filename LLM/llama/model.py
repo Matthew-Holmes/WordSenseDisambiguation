@@ -40,7 +40,9 @@ class ModelArgs:
     norm_eps: float = 1e-5
 
     max_batch_size: int = 32
-    max_seq_len: int = 2048
+    rotary_embed_len: int = 2048
+    cache_len: int = 2048
+    
 
 
 class RMSNorm(torch.nn.Module):
@@ -207,6 +209,7 @@ class Attention(nn.Module):
             cache_k (torch.Tensor): Cached keys for attention.
             cache_v (torch.Tensor): Cached values for attention.
 
+            
         """
         super().__init__()
         self.n_kv_heads = args.n_heads if args.n_kv_heads is None else args.n_kv_heads
@@ -216,6 +219,7 @@ class Attention(nn.Module):
         self.n_rep = self.n_local_heads // self.n_local_kv_heads
         self.head_dim = args.dim // args.n_heads
 
+        print("attention initialising")
         self.wq = ColumnParallelLinear(
             args.dim,
             args.n_heads * self.head_dim,
@@ -223,6 +227,7 @@ class Attention(nn.Module):
             gather_output=False,
             init_method=lambda x: x,
         )
+        print(" done wq")
         self.wk = ColumnParallelLinear(
             args.dim,
             self.n_kv_heads * self.head_dim,
@@ -230,6 +235,7 @@ class Attention(nn.Module):
             gather_output=False,
             init_method=lambda x: x,
         )
+        print(" done wk")
         self.wv = ColumnParallelLinear(
             args.dim,
             self.n_kv_heads * self.head_dim,
@@ -237,6 +243,7 @@ class Attention(nn.Module):
             gather_output=False,
             init_method=lambda x: x,
         )
+        print(" done wv")
         self.wo = RowParallelLinear(
             args.n_heads * self.head_dim,
             args.dim,
@@ -244,23 +251,26 @@ class Attention(nn.Module):
             input_is_parallel=True,
             init_method=lambda x: x,
         )
+        print(" done wo")
 
         self.cache_k = torch.zeros(
             (
                 args.max_batch_size,
-                args.max_seq_len,
+                args.cache_len,
                 self.n_local_kv_heads,
                 self.head_dim,
             )
         )#.cuda() # TODO - reinstate if use GPU
+        print(" done cache k")
         self.cache_v = torch.zeros(
             (
                 args.max_batch_size,
-                args.max_seq_len,
+                args.cache_len,
                 self.n_local_kv_heads,
                 self.head_dim,
             )
         )#.cuda() # TODO - reinstate if use GPU
+        print(" done cache v")
 
     def forward(
         self,
@@ -462,7 +472,7 @@ class Transformer(nn.Module):
         self.freqs_cis = precompute_freqs_cis(
             # Note that self.params.max_seq_len is multiplied by 2 because the token limit for the Llama 2 generation of models is 4096. 
             # Adding this multiplier instead of using 4096 directly allows for dynamism of token lengths while training or fine-tuning.
-            self.params.dim // self.params.n_heads, self.params.max_seq_len * 2
+            self.params.dim // self.params.n_heads, self.params.rotary_embed_len * 2
         )
 
     @torch.inference_mode()
