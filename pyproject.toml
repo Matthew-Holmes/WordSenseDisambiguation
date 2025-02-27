@@ -21,6 +21,8 @@ dependencies = [
     "protobuf>=5.29.3",
     "accelerate>=1.4.0",
     "fairscale>=0.4.13",
+    "termcolor>=2.5.0",
+    "pydantic>=2.10.6",
 ]
 
 [tool.uv.sources]
