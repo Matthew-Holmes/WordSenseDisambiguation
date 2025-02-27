@@ -109,7 +109,7 @@ class Llama:
             params = json.loads(f.read())
 
         model_args: ModelArgs = ModelArgs(
-            rotary_embed_len=max_seq_len,
+            cache_len=max_seq_len,
             max_batch_size=max_batch_size,
             **params,
         )
@@ -161,8 +161,8 @@ class Llama:
 
         min_prompt_len = min(len(t) for t in prompt_tokens)
         max_prompt_len = max(len(t) for t in prompt_tokens)
-        assert max_prompt_len <= params.rotary_embed_len
-        total_len = min(params.rotary_embed_len, max_gen_len + max_prompt_len)
+        assert max_prompt_len <= params.cache_len
+        total_len = min(params.cache_len, max_gen_len + max_prompt_len)
 
         pad_id = self.tokenizer.pad_id
         tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long, device="cuda")
@@ -260,7 +260,7 @@ class Llama:
 
         """
         if max_gen_len is None:
-            max_gen_len = self.model.params.rotary_embed_len - 1
+            max_gen_len = self.model.params.max_seq_len - 1
         prompt_tokens = [self.tokenizer.encode(x, bos=True, eos=False) for x in prompts]
         generation_tokens, generation_logprobs = self.generate(
             prompt_tokens=prompt_tokens,
@@ -314,7 +314,7 @@ class Llama:
 
         """
         if max_gen_len is None:
-            max_gen_len = self.model.params.rotary_embed_len - 1
+            max_gen_len = self.model.params.max_seq_len - 1
         prompt_tokens = []
         unsafe_requests = []
         for dialog in dialogs:
