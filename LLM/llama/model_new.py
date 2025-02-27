@@ -312,7 +312,15 @@ class Transformer(nn.Module):
             self.layers.append(TransformerBlock(layer_id, params))
 
         self.norm = RMSNorm(params.dim, eps=params.norm_eps)
-        self.output = ColumnParallelLinear(params.dim, params.vocab_size, bias=False, init_method=lambda x: x)
+
+        # Tie output layer weights to token embedding weights
+        # https://github.com/pytorch/torchtune/issues/1749
+        self.output = ColumnParallelLinear(params.dim, params.vocab_size, bias=False)
+
+        # correct way to tie weights
+        self.output.weight = nn.Parameter(self.tok_embeddings.weight)
+
+
 
         self.freqs_cis = precompute_freqs_cis(
             params.dim // params.n_heads,
