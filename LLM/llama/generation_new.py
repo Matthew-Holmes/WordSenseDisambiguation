@@ -28,18 +28,14 @@ from typing import Generator, List, Optional
 
 import torch
 import torch.nn.functional as F
-from fairscale.nn.model_parallel.initialize import (
-    get_model_parallel_rank,
-    initialize_model_parallel,
-    model_parallel_is_initialized,
-)
+
 from termcolor import cprint
 
-from ...datatypes import RawContent, RawMessage, StopReason, ToolPromptFormat
+from .datatypes import RawContent, RawMessage, StopReason, ToolPromptFormat
 
-from ..api.args import ModelArgs
-from ..api.chat_format import ChatFormat, LLMInput
-from ..api.tokenizer import Tokenizer
+from .model_new import ModelArgs
+from .chat_format import ChatFormat, LLMInput
+from .tokenizer import Tokenizer
 from .model import Transformer
 
 
@@ -65,122 +61,6 @@ class TokenResult:
 
 
 class Llama:
-    @staticmethod
-    def build(
-        ckpt_dir: str,
-        max_seq_len: int,
-        max_batch_size: int,
-        model_parallel_size: Optional[int] = None,
-        tokenizer_path: Optional[str] = None,
-        seed: int = 1,
-        device: str = "cuda",
-    ):
-        """
-        Build a Llama instance by initializing and loading a model checkpoint.
-
-        Args:
-            ckpt_dir (str): Path to the directory containing checkpoint files.
-            tokenizer_path (str): Path to the tokenizer file.
-            max_seq_len (int): Maximum sequence length for input text.
-            max_batch_size (int): Maximum batch size for inference.
-            model_parallel_size (Optional[int], optional): Number of model parallel processes.
-                If not provided, it's determined from the environment. Defaults to None.
-            device (str, optional): Device to use, e.g. cuda (default), xpu, cpu, etc.
-
-        Returns:
-            Llama: An instance of the Llama class with the loaded model and tokenizer.
-
-        Raises:
-            AssertionError: If there are no checkpoint files in the specified directory,
-                or if the model parallel size does not match the number of checkpoint files.
-            RuntimeError: If PyTorch backend for the specified device is not available.
-
-
-        Note:
-            This method initializes the distributed process group, sets the device to CUDA,
-            and loads the pre-trained model and tokenizer.
-        """
-
-        device = torch.device(device)
-        if (
-            device.type == "cuda"
-            and not torch.cuda.is_available()
-            or device.type == "xpu"
-            and not torch.xpu.is_available()
-        ):
-            raise RuntimeError(f"PyTorch backend for {device.type} device type is not available")
-
-        if not torch.distributed.is_initialized():
-            if device.type == "cuda":
-                torch.distributed.init_process_group("nccl")
-            else:
-                torch.distributed.init_process_group("gloo")
-
-        if not model_parallel_is_initialized():
-            if model_parallel_size is None:
-                model_parallel_size = int(os.environ.get("WORLD_SIZE", 1))
-            initialize_model_parallel(model_parallel_size)
-
-        local_rank = int(os.environ.get("LOCAL_RANK", 0))
-        if device.type == "cuda":
-            torch.cuda.set_device(local_rank)
-        elif device.type == "xpu":
-            torch.xpu.set_device(local_rank)
-
-        torch.manual_seed(seed)
-
-        if local_rank > 0:
-            sys.stdout = open(os.devnull, "w")
-
-        start_time = time.time()
-
-        checkpoints = sorted(Path(ckpt_dir).glob("*.pth"))
-        assert len(checkpoints) > 0, f"no checkpoint files found in {ckpt_dir}"
-        assert model_parallel_size == len(checkpoints), (
-            f"Loading a checkpoint for MP={len(checkpoints)} but world size is {model_parallel_size}"
-        )
-        ckpt_path = checkpoints[get_model_parallel_rank()]
-        checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=True)
-        with open(Path(ckpt_dir) / "params.json", "r") as f:
-            params = json.loads(f.read())
-
-        model_args: ModelArgs = ModelArgs(
-            max_seq_len=max_seq_len,
-            max_batch_size=max_batch_size,
-            **params,
-        )
-        if tokenizer_path:
-            tokenizer = Tokenizer(model_path=tokenizer_path)
-        else:
-            tokenizer = Tokenizer.get_instance()
-
-        assert model_args.vocab_size == tokenizer.n_words
-        torch.set_default_device(device)
-        if device.type == "cuda":
-            if torch.cuda.is_bf16_supported():
-                torch.set_default_dtype(torch.bfloat16)
-            else:
-                torch.set_default_dtype(torch.half)
-        elif device.type == "xpu":
-            if torch.xpu.is_bf16_supported():
-                torch.set_default_dtype(torch.bfloat16)
-            else:
-                torch.set_default_dtype(torch.half)
-        else:
-            torch.set_default_dtype(torch.half)
-
-        if model_args.vision_chunk_size > 0:
-            from .multimodal.model import CrossAttentionTransformer
-
-            model = CrossAttentionTransformer(model_args)
-            model.setup_cache(model_args.max_batch_size, torch.get_default_dtype())
-        else:
-            model = Transformer(model_args)
-        model.load_state_dict(checkpoint, strict=True)
-        model.to(device)
-        print(f"Loaded in {time.time() - start_time:.2f} seconds")
-
-        return Llama(model, tokenizer, model_args)
 
     def __init__(self, model: Transformer, tokenizer: Tokenizer, args: ModelArgs):
         self.args = args
