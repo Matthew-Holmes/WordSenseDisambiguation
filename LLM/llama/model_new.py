@@ -14,7 +14,7 @@
 
 import math
 from typing import Optional, Tuple
-from typing import dataclass
+from dataclasses import dataclass
 
 import torch
 import torch.nn.functional as F
@@ -50,7 +50,8 @@ class ModelArgs:
     use_scaled_rope: bool = False
 
     max_batch_size: int = 32
-    max_seq_len: int = 2048
+    rotary_embed_len: int = 2048
+    cache_len: int = 2048
 
     # vision model params
     vision_chunk_size: int = -1  # image resolution for image models
@@ -189,7 +190,7 @@ class Attention(nn.Module):
         self.cache_k = torch.zeros(
             (
                 args.max_batch_size,
-                args.max_seq_len,
+                args.cache_len,
                 self.n_local_kv_heads,
                 self.head_dim,
             )
@@ -197,11 +198,12 @@ class Attention(nn.Module):
         self.cache_v = torch.zeros(
             (
                 args.max_batch_size,
-                args.max_seq_len,
+                args.cache_len,
                 self.n_local_kv_heads,
                 self.head_dim,
             )
         )
+        print("attention block initialised")
 
     def forward(
         self,
@@ -303,7 +305,7 @@ class Transformer(nn.Module):
         self.vocab_size = params.vocab_size
         self.n_layers = params.n_layers
 
-        self.tok_embeddings = nn.embedding(params.vocab_size, params.dim, init_method=lambda x: x)
+        self.tok_embeddings = nn.Embedding(params.vocab_size, params.dim)#, init_method=lambda x: x)
 
         self.layers = torch.nn.ModuleList()
         for layer_id in range(params.n_layers):
@@ -314,7 +316,7 @@ class Transformer(nn.Module):
 
         self.freqs_cis = precompute_freqs_cis(
             params.dim // params.n_heads,
-            params.max_seq_len * 2,
+            params.rotary_embed_len * 2,
             params.rope_theta,
             params.use_scaled_rope,
         )
