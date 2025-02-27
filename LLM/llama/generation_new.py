@@ -75,9 +75,9 @@ class Llama:
         max_gen_len: int,
         temperature: float = 0.6,
         top_p: float = 0.9,
-        logprobs: bool = False,
+        logprobs: bool = True,
         echo: bool = False,
-        print_model_input: bool = False,
+        print_model_input: bool = True,
     ) -> Generator:
         params = self.model.params
 
@@ -95,13 +95,13 @@ class Llama:
         min_prompt_len = min(len(t) for t in prompt_tokens)
         max_prompt_len = max(len(t) for t in prompt_tokens)
 
-        if max_prompt_len >= params.max_seq_len:
-            cprint(f"Out of token budget {max_prompt_len} vs {params.max_seq_len}", "red")
+        if max_prompt_len >= params.cache_len:
+            cprint(f"Out of token budget {max_prompt_len} vs {params.cache_len}", "red")
             return
 
-        total_len = min(max_gen_len + max_prompt_len, params.max_seq_len)
+        total_len = min(max_gen_len + max_prompt_len, params.cache_len)
 
-        is_vision = not isinstance(self.model, Transformer)
+        is_vision = False
         if is_vision:
             images = model_input.vision.images if model_input.vision is not None else []
             mask = model_input.vision.mask if model_input.vision is not None else []
@@ -196,11 +196,11 @@ class Llama:
         temperature: float = 0.6,
         top_p: float = 0.9,
         max_gen_len: Optional[int] = None,
-        logprobs: bool = False,
+        logprobs: bool = True,
         echo: bool = False,
     ) -> CompletionPrediction:
-        if max_gen_len is None or max_gen_len == 0 or max_gen_len >= self.model.params.max_seq_len:
-            max_gen_len = self.model.params.max_seq_len - 1
+        if max_gen_len is None or max_gen_len == 0 or max_gen_len >= self.model.params.cache_len:
+            max_gen_len = self.model.params.cache_len - 1
 
         model_input = self.formatter.encode_content(content)
 
@@ -240,8 +240,8 @@ class Llama:
         tool_prompt_format: ToolPromptFormat = ToolPromptFormat.json,
         echo: bool = False,
     ) -> ChatPrediction:
-        if max_gen_len is None or max_gen_len == 0 or max_gen_len >= self.model.params.max_seq_len:
-            max_gen_len = self.model.params.max_seq_len - 1
+        if max_gen_len is None or max_gen_len == 0 or max_gen_len >= self.model.params.cache_len:
+            max_gen_len = self.model.params.cache_len - 1
 
         tokens = []
         token_logprobs = []
@@ -288,8 +288,8 @@ class Llama:
         max_gen_len: Optional[int] = None,
         tool_prompt_format: ToolPromptFormat = ToolPromptFormat.json,
     ) -> List[int]:
-        if max_gen_len is None or max_gen_len == 0 or max_gen_len >= self.model.params.max_seq_len:
-            max_gen_len = self.model.params.max_seq_len - 1
+        if max_gen_len is None or max_gen_len == 0 or max_gen_len >= self.model.params.cache_len:
+            max_gen_len = self.model.params.cache_len - 1
 
         output_tokens = []
         model_input = self.formatter.encode_dialog_prompt(messages, tool_prompt_format)
@@ -312,8 +312,8 @@ class Llama:
         top_p: float = 0.9,
         max_gen_len: Optional[int] = None,
     ):
-        if max_gen_len is None or max_gen_len == 0 or max_gen_len >= self.model.params.max_seq_len:
-            max_gen_len = self.model.params.max_seq_len - 1
+        if max_gen_len is None or max_gen_len == 0 or max_gen_len >= self.model.params.cache_len:
+            max_gen_len = self.model.params.cache_len - 1
 
         model_input = self.formatter.encode_content(content)
         input_tokens = model_input.tokens
