@@ -14,22 +14,60 @@
 
 import math
 from typing import Optional, Tuple
+from typing import dataclass
 
-import fairscale.nn.model_parallel.initialize as fs_init
 import torch
 import torch.nn.functional as F
-from fairscale.nn.model_parallel.layers import (
-    ColumnParallelLinear,
-    RowParallelLinear,
-    VocabParallelEmbedding,
-)
 from torch import nn
 
-from ..api import ModelArgs
+class ColumnParallelLinear(torch.nn.Linear):
+    """Fallback for single-device CPU/GPU without fairscale."""
+    def __init__(self, in_features, out_features, bias=True, gather_output=True, init_method=None):
+        super().__init__(in_features, out_features, bias)
 
-# **NOTE**: This code is not runnable without installing `torch` and `fairscale`
-# dependencies. These dependencies are not part of the default dependencies
-# (requirements.txt) of the `llama-models` package.
+class RowParallelLinear(torch.nn.Linear):
+    """Fallback for single-device CPU/GPU without fairscale."""
+    def __init__(self, in_features, out_features, bias=True, input_is_parallel=False, init_method=None):
+        super().__init__(in_features, out_features, bias)
+
+class ParallelEmbedding(torch.nn.Embedding):
+    """Fallback for single-device CPU/GPU without fairscale."""
+    def __init__(self, num_embeddings, embedding_dim, init_method=None):
+        super().__init__(num_embeddings, embedding_dim)
+
+
+@dataclass
+class ModelArgs:
+    dim: int = 4096
+    n_layers: int = 32
+    n_heads: int = 32
+    n_kv_heads: Optional[int] = None
+    vocab_size: int = -1
+    multiple_of: int = 256  # make SwiGLU hidden layer size multiple of large power of 2
+    ffn_dim_multiplier: Optional[float] = None
+    norm_eps: float = 1e-5
+    rope_theta: float = 500000
+    use_scaled_rope: bool = False
+
+    max_batch_size: int = 32
+    max_seq_len: int = 2048
+
+    # vision model params
+    vision_chunk_size: int = -1  # image resolution for image models
+    vision_max_num_chunks: int = 4
+    vision_num_cross_attention_layers: int = -1
+
+
+    def __init__(self, **kwargs):
+        for k, v in kwargs.items():
+            if hasattr(self, k):
+                setattr(self, k, v)
+
+        if self.n_kv_heads is None:
+            self.n_kv_heads = self.n_heads
+        assert self.n_kv_heads <= self.n_heads
+        assert self.n_heads % self.n_kv_heads == 0
+        assert self.dim % self.n_heads == 0
 
 
 class RMSNorm(torch.nn.Module):
@@ -113,7 +151,7 @@ class Attention(nn.Module):
     def __init__(self, args: ModelArgs):
         super().__init__()
         self.n_kv_heads = args.n_heads if args.n_kv_heads is None else args.n_kv_heads
-        model_parallel_size = fs_init.get_model_parallel_world_size()
+        model_parallel_size = 1
         self.n_local_heads = args.n_heads // model_parallel_size
         self.n_local_kv_heads = self.n_kv_heads // model_parallel_size
         self.n_rep = self.n_local_heads // self.n_local_kv_heads
@@ -265,7 +303,7 @@ class Transformer(nn.Module):
         self.vocab_size = params.vocab_size
         self.n_layers = params.n_layers
 
-        self.tok_embeddings = VocabParallelEmbedding(params.vocab_size, params.dim, init_method=lambda x: x)
+        self.tok_embeddings = nn.embedding(params.vocab_size, params.dim, init_method=lambda x: x)
 
         self.layers = torch.nn.ModuleList()
         for layer_id in range(params.n_layers):
