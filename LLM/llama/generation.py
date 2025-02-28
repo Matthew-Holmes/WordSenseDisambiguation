@@ -18,20 +18,13 @@
 # TODO - disable CUDA
 # TODO - propagate rotary embed len vs cache len change
 
-import json
-import os
-import sys
-import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Generator, List, Optional
 
 import torch
 import torch.nn.functional as F
 
 from termcolor import cprint
-
-from .datatypes import RawContent, RawMessage, StopReason, ToolPromptFormat
 
 from .model import ModelArgs
 from .chat_format import ChatFormat, LLMInput
@@ -42,13 +35,6 @@ from .model import Transformer
 @dataclass
 class CompletionPrediction:
     generation: str
-    decoded_tokens: Optional[List[str]] = None
-    logprobs: Optional[List[List[float]]] = None
-
-
-@dataclass
-class ChatPrediction:
-    generation: RawMessage
     decoded_tokens: Optional[List[str]] = None
     logprobs: Optional[List[List[float]]] = None
 
@@ -172,7 +158,7 @@ class Llama:
 
     def text_completion(
         self,
-        content: RawContent,
+        content: str,
         temperature: float = 0.6,
         top_p: float = 0.9,
         max_gen_len: Optional[int] = None,
@@ -209,106 +195,6 @@ class Llama:
             )
 
         return CompletionPrediction(generation=generation)
-
-    def chat_completion(
-        self,
-        messages: List[RawMessage],
-        temperature: float = 0.6,
-        top_p: float = 0.9,
-        max_gen_len: Optional[int] = None,
-        logprobs: bool = False,
-        tool_prompt_format: ToolPromptFormat = ToolPromptFormat.json,
-        echo: bool = False,
-    ) -> ChatPrediction:
-        if max_gen_len is None or max_gen_len == 0 or max_gen_len >= self.model.params.cache_len:
-            max_gen_len = self.model.params.cache_len - 1
-
-        tokens = []
-        token_logprobs = []
-        decoded_tokens = []
-
-        stop_reason = None
-        for result in self.generate(
-            model_input=self.formatter.encode_dialog_prompt(messages, tool_prompt_format),
-            max_gen_len=max_gen_len,
-            temperature=temperature,
-            top_p=top_p,
-            logprobs=logprobs,
-            echo=echo,
-        ):
-            tokens.append(result.token)
-            if result.text == "<|eot_id|>":
-                stop_reason = StopReason.end_of_turn
-            elif result.text == "<|eom_id|>":
-                stop_reason = StopReason.end_of_message
-
-            if logprobs:
-                decoded_tokens.append(result.text)
-                token_logprobs.append(result.logprobs)
-
-        if stop_reason is None:
-            stop_reason = StopReason.out_of_tokens
-
-        message = self.formatter.decode_assistant_message(tokens, stop_reason)
-
-        if logprobs:
-            return ChatPrediction(
-                generation=message,
-                logprobs=token_logprobs,
-                decoded_tokens=decoded_tokens,
-            )
-
-        return ChatPrediction(generation=message)
-
-    def chat_completion_raw(
-        self,
-        messages: List[RawMessage],
-        temperature: float = 0.6,
-        top_p: float = 0.9,
-        max_gen_len: Optional[int] = None,
-        tool_prompt_format: ToolPromptFormat = ToolPromptFormat.json,
-    ) -> List[int]:
-        if max_gen_len is None or max_gen_len == 0 or max_gen_len >= self.model.params.cache_len:
-            max_gen_len = self.model.params.cache_len - 1
-
-        output_tokens = []
-        model_input = self.formatter.encode_dialog_prompt(messages, tool_prompt_format)
-        input_tokens = model_input.tokens
-        for result in self.generate(
-            model_input=model_input,
-            max_gen_len=max_gen_len,
-            temperature=temperature,
-            top_p=top_p,
-            logprobs=False,
-        ):
-            output_tokens.append(result.token)
-
-        return input_tokens, output_tokens
-
-    def text_completion_raw(
-        self,
-        content: RawContent,
-        temperature: float = 0.6,
-        top_p: float = 0.9,
-        max_gen_len: Optional[int] = None,
-    ):
-        if max_gen_len is None or max_gen_len == 0 or max_gen_len >= self.model.params.cache_len:
-            max_gen_len = self.model.params.cache_len - 1
-
-        model_input = self.formatter.encode_content(content)
-        input_tokens = model_input.tokens
-
-        output_tokens = []
-        for result in self.generate(
-            model_input=model_input,
-            max_gen_len=max_gen_len,
-            temperature=temperature,
-            top_p=top_p,
-            logprobs=False,
-        ):
-            output_tokens.append(result.token)
-
-        return input_tokens, output_tokens
 
 
 def sample_top_p(probs, p):
