@@ -44,7 +44,6 @@ class ModelArgs:
     n_kv_heads: Optional[int] = None
     vocab_size: int = -1
     multiple_of: int = 256  # make SwiGLU hidden layer size multiple of large power of 2
-    ffn_dim_multiplier: Optional[float] = None
     norm_eps: float = 1e-5
     rope_theta: float = 500000
     use_scaled_rope: bool = True
@@ -67,23 +66,6 @@ class ModelArgs:
         assert self.dim % self.n_heads == 0
 
 
-class T5LayerNorm(torch.nn.Module):
-    def __init__(self, hidden_size, eps=1e-6):
-        """
-        Construct a layernorm module in the T5 style No bias and no subtraction of mean.
-        """
-        super().__init__()
-        self.weight = nn.Parameter(torch.ones(hidden_size))
-        self.variance_epsilon = eps
-
-    def forward(self, x):
-        # layer norm should always be calculated in float32
-        variance = x.to(torch.float32).pow(2).mean(-1, keepdim=True)
-        x = x / torch.sqrt(variance + self.variance_epsilon)
-
-        if self.weight.dtype == torch.float16:
-            x = x.to(torch.float16)
-        return self.weight * x
 
 class RMSNorm(torch.nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6):
@@ -268,13 +250,9 @@ class FeedForward(nn.Module):
         dim: int,
         hidden_dim: int,
         multiple_of: int,
-        ffn_dim_multiplier: Optional[float],
     ):
         super().__init__()
-        hidden_dim = int(2 * hidden_dim / 3)
-        # custom dim factor multiplier
-        if ffn_dim_multiplier is not None:
-            hidden_dim = int(ffn_dim_multiplier * hidden_dim)
+
         hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
 
         self.w1 = ColumnParallelLinear(dim, hidden_dim, bias=False, gather_output=False, init_method=lambda x: x)
@@ -296,7 +274,6 @@ class TransformerBlock(nn.Module):
             dim=args.dim,
             hidden_dim=4 * args.dim,
             multiple_of=args.multiple_of,
-            ffn_dim_multiplier=args.ffn_dim_multiplier,
         )
         self.layer_id = layer_id
         self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
