@@ -29,15 +29,8 @@ from .tool_utils import ToolUtils
 
 
 @dataclass
-class VisionInput:
-    mask: List[List[int]]
-    images: List
-
-
-@dataclass
 class LLMInput:
     tokens: List[int]
-    vision: Optional[VisionInput] = None
 
 
 def role_str(role: Role) -> str:
@@ -57,7 +50,6 @@ class ChatFormat:
         self.tokenizer = tokenizer
 
         self.possible_headers = {role: f"<|start_header_id|>{role_str(role)}<|end_header_id|>\n\n" for role in Role}
-        self.vision_token = self.tokenizer.special_tokens["<|image|>"]
 
     def _encode_header(self, role: str) -> List[int]:
         tokens = []
@@ -67,13 +59,8 @@ class ChatFormat:
         tokens.extend(self.tokenizer.encode("\n\n", bos=False, eos=False))
         return tokens
 
-    def encode_content(self, content: RawContent) -> LLMInput:
-        tokens, images = self._encode_content(content, bos=True)
-        return self._model_input_from_tokens_images(tokens, images)
-
-    def _encode_content(self, content: RawContent, bos: bool = False) -> Tuple[List[int], List]:
+    def encode_content(self, content: RawContent, bos: bool = False) -> LLMInput:
         tokens = []
-        images = []
 
         added_bos = False
 
@@ -86,36 +73,23 @@ class ChatFormat:
                 tokens.extend(self.tokenizer.encode(c, bos=False if added_bos else bos, eos=False))
                 added_bos = True
 
-            # elif isinstance(c, RawMediaItem):
-            #     bos = False if added_bos else bos
-            #     if bos:
-            #         tokens.append(self.tokenizer.special_tokens["<|begin_of_text|>"])
-            #         added_bos = True
-            #     tokens.append(self.vision_token)
-
-            #     bytes_io = io.BytesIO(c.data) if isinstance(c.data, bytes) else c.data
-            #     image = PIL_Image.open(bytes_io)
-            #     image = image.convert("RGB")
-            #     images.append(image)
-
         if isinstance(content, list):
             for c in content:
                 _process(c)
         else:
             _process(content)
 
-        return tokens, images
-
+        return LLMInput(tokens = tokens)
+    
     def encode_message(
         self, message: RawMessage, tool_prompt_format: ToolPromptFormat
-    ) -> Tuple[List[int], List]:
+    ) -> List[int]:
+        
         tokens = self._encode_header(message.role)
-        images = []
 
         def _process_content(c):
-            toks, imgs = self._encode_content(c)
+            toks = self.encode_content(c).tokens
             tokens.extend(toks)
-            images.extend(imgs)
 
         if (
             message.role == "assistant"
@@ -142,7 +116,8 @@ class ChatFormat:
             eom = message.stop_reason == StopReason.end_of_message
 
         tokens.append(self.tokenizer.special_tokens["<|eom_id|>" if eom else "<|eot_id|>"])
-        return tokens, images
+        return tokens
+    
 
     def encode_dialog_prompt(
         self,
@@ -154,14 +129,13 @@ class ChatFormat:
         images = []
         tokens.append(self.tokenizer.special_tokens["<|begin_of_text|>"])
         for message in messages:
-            toks, imgs = self.encode_message(message, tool_prompt_format)
+            toks  = self.encode_message(message, tool_prompt_format)
             tokens.extend(toks)
-            images.extend(imgs)
 
         # Add the start of an assistant message for the model to complete.
         tokens.extend(self._encode_header("assistant"))
 
-        return self._model_input_from_tokens_images(tokens, images)
+        return LLMInput(tokens = tokens)
 
     # TODO(this should be generic, not only for assistant messages)
     def decode_assistant_message(self, tokens: List[int], stop_reason: StopReason) -> RawMessage:
@@ -233,42 +207,3 @@ class ChatFormat:
             stop_reason=stop_reason,
             tool_calls=tool_calls,
         )
-
-    def _model_input_from_tokens_images(self, tokens: List[int], images: List) -> LLMInput:
-        vision_input = None
-        if len(images) > 0:
-            vision_input = VisionInput(
-                mask=create_vision_mask(tokens, self.vision_token),
-                images=images,
-            )
-
-        return LLMInput(
-            tokens=[128256 if token == self.vision_token else token for token in tokens],
-            vision=vision_input,
-        )
-
-
-def create_vision_mask(
-    tokens: List[int],
-    vision_token: int,
-) -> List[List[int]]:
-    vision_token_locations = [i for i, token in enumerate(tokens) if token == vision_token]
-    if len(vision_token_locations) == 0:
-        return []
-
-    if len(vision_token_locations) == 1:
-        # only one image present, unmask until end of sequence
-        return [[vision_token_locations[0], -1]]
-    vision_masks = [[loc1, loc2] for loc1, loc2 in zip(vision_token_locations[:-1], vision_token_locations[1:])]
-    # last image will attend to all subsequent text
-    vision_masks.append([vision_token_locations[-1], len(tokens)])
-
-    # if there are two or more consecutive vision tokens,
-    # they should all attend to all subsequent
-    # text present
-    last_mask_end = vision_masks[-1][1]
-    for vision_mask in vision_masks[::-1]:
-        if vision_mask[0] == vision_mask[1] - 1:
-            vision_mask[1] = last_mask_end
-        last_mask_end = vision_mask[1]
-    return vision_masks

@@ -84,9 +84,8 @@ class Llama:
         params = self.model.params
 
         if print_model_input:
-            tokens_to_print = [self.formatter.vision_token if t == 128256 else t for t in model_input.tokens]
             cprint(
-                "Input to model:\n" + self.tokenizer.decode(tokens_to_print) + "\n",
+                "Input to model:\n" + self.tokenizer.decode(model_input.tokens) + "\n",
                 "red",
             )
         prompt_tokens = [model_input.tokens]
