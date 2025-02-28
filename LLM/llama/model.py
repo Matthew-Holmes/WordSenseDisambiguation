@@ -47,16 +47,12 @@ class ModelArgs:
     ffn_dim_multiplier: Optional[float] = None
     norm_eps: float = 1e-5
     rope_theta: float = 500000
-    use_scaled_rope: bool = False
+    use_scaled_rope: bool = True
+    rope_scale_factor: float = 32.0
 
     max_batch_size: int = 32
-    rotary_embed_len: int = 2048
+    original_rotary_embed_len: int = 2048
     cache_len: int = 2048
-
-    # vision model params
-    vision_chunk_size: int = -1  # image resolution for image models
-    vision_max_num_chunks: int = 4
-    vision_num_cross_attention_layers: int = -1
 
 
     def __init__(self, **kwargs):
@@ -70,6 +66,24 @@ class ModelArgs:
         assert self.n_heads % self.n_kv_heads == 0
         assert self.dim % self.n_heads == 0
 
+
+class T5LayerNorm(torch.nn.Module):
+    def __init__(self, hidden_size, eps=1e-6):
+        """
+        Construct a layernorm module in the T5 style No bias and no subtraction of mean.
+        """
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.variance_epsilon = eps
+
+    def forward(self, x):
+        # layer norm should always be calculated in float32
+        variance = x.to(torch.float32).pow(2).mean(-1, keepdim=True)
+        x = x / torch.sqrt(variance + self.variance_epsilon)
+
+        if self.weight.dtype == torch.float16:
+            x = x.to(torch.float16)
+        return self.weight * x
 
 class RMSNorm(torch.nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6):
@@ -85,12 +99,10 @@ class RMSNorm(torch.nn.Module):
         return output * self.weight
 
 
-def apply_scaling(freqs: torch.Tensor) -> torch.Tensor:
-    # Values obtained from grid search
-    scale_factor = 8
-    low_freq_factor = 1
-    high_freq_factor = 4
-    old_context_len = 8192  # original llama3 length
+def apply_scaling(freqs: torch.Tensor, scale_factor: float, original: int) -> torch.Tensor:
+    low_freq_factor = 1 # from 4
+    high_freq_factor = 1
+    old_context_len = original
 
     low_freq_wavelen = old_context_len / low_freq_factor
     high_freq_wavelen = old_context_len / high_freq_factor
@@ -105,11 +117,15 @@ def apply_scaling(freqs: torch.Tensor) -> torch.Tensor:
     )
 
 
-def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0, use_scaled: bool = False):
+def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0, use_scaled: bool = False, scale_factor: float = 32.0, original: int = 8192):
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
+
+    print(f"orinal freqs: {freqs}")
     t = torch.arange(end, device=freqs.device, dtype=torch.float32)
     if use_scaled:
-        freqs = apply_scaling(freqs)
+        freqs = apply_scaling(freqs, scale_factor, original)
+        print(f"rescaled freqs: {freqs}")
+    
     freqs = torch.outer(t, freqs)
     freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
     return freqs_cis
@@ -318,15 +334,16 @@ class Transformer(nn.Module):
         self.output = ColumnParallelLinear(params.dim, params.vocab_size, bias=False)
 
         # correct way to tie weights
-        self.output.weight = nn.Parameter(self.tok_embeddings.weight)
+        self.output.weight = nn.Parameter(self.tok_embeddings.weight.T)
 
-
-
+        # only precompute cache len freq cis, since that is as much as we will be able to predict with this
         self.freqs_cis = precompute_freqs_cis(
             params.dim // params.n_heads,
-            params.rotary_embed_len * 2,
+            params.cache_len,
             params.rope_theta,
             params.use_scaled_rope,
+            params.rope_scale_factor,
+            params.original_rotary_embed_len
         )
 
     @torch.inference_mode()
