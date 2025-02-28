@@ -33,10 +33,10 @@ from termcolor import cprint
 
 from .datatypes import RawContent, RawMessage, StopReason, ToolPromptFormat
 
-from .model_new import ModelArgs
+from .model import ModelArgs
 from .chat_format import ChatFormat, LLMInput
 from .tokenizer import Tokenizer
-from .model_new import Transformer
+from .model import Transformer
 
 
 @dataclass
@@ -68,6 +68,7 @@ class Llama:
         self.tokenizer = tokenizer
         self.formatter = ChatFormat(tokenizer)
 
+
     @torch.inference_mode()
     def generate(
         self,
@@ -78,6 +79,7 @@ class Llama:
         logprobs: bool = True,
         echo: bool = False,
         print_model_input: bool = True,
+        repetition_penalty: float = 1.2,  # Added repetition penalty
     ) -> Generator:
         params = self.model.params
 
@@ -101,18 +103,6 @@ class Llama:
 
         total_len = min(max_gen_len + max_prompt_len, params.cache_len)
 
-        is_vision = False
-        if is_vision:
-            images = model_input.vision.images if model_input.vision is not None else []
-            mask = model_input.vision.mask if model_input.vision is not None else []
-
-            # the method works for bsz > 1 so add a batch dimension
-            xattn_caches, cross_attention_masks, full_text_row_masked_out_mask = self.model.compute_vision_tokens_masks(
-                batch_images=[images],
-                batch_masks=[mask],
-                total_len=total_len,
-            )
-
         pad_id = self.tokenizer.pad_id
         tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long)
         for k, t in enumerate(prompt_tokens):
@@ -134,43 +124,33 @@ class Llama:
 
         stop_tokens = torch.tensor(self.tokenizer.stop_tokens)
         for cur_pos in range(min_prompt_len, total_len):
-            if is_vision:
-                position_ids = torch.arange(prev_pos, cur_pos, dtype=torch.long)
-                text_only_inference = model_input.vision is None
-                logits = self.model.forward(
-                    position_ids,
-                    tokens,
-                    cross_attention_masks,
-                    full_text_row_masked_out_mask,
-                    xattn_caches,
-                    text_only_inference,
-                )
-            else:
-                logits = self.model.forward(tokens[:, prev_pos:cur_pos], prev_pos)
+            logits = self.model.forward(tokens[:, prev_pos:cur_pos], prev_pos)
 
+            # Apply repetition penalty
+            past_tokens = tokens[:, :cur_pos]  # Extract previously generated tokens
+
+            scores = logits[:, -1]
+
+            past_scores = torch.gather(scores, 1, past_tokens)
+
+            past_scores = torch.where(
+                past_scores < 0, past_scores * repetition_penalty, past_scores / repetition_penalty
+            )
+
+            scores = scores.scatter(1, past_tokens, past_scores)
+
+            # Sample next token
             if temperature > 0:
-                probs = torch.softmax(logits[:, -1] / temperature, dim=-1)
+                probs = torch.softmax(scores / temperature, dim=-1)
                 next_token = sample_top_p(probs, top_p)
             else:
-                next_token = torch.argmax(logits[:, -1], dim=-1)
+                next_token = torch.argmax(scores, dim=-1)
 
             next_token = next_token.reshape(-1)
-            # only replace token if prompt has already been generated
             next_token = torch.where(input_text_mask[:, cur_pos], tokens[:, cur_pos], next_token)
             tokens[:, cur_pos] = next_token
 
             target = tokens[:, prev_pos + 1 : cur_pos + 1]
-            if is_vision:
-                # the logits space (num_classes) is designed to never contain a media_token
-                # however our input token stream does contain them. we need to nuke them here
-                # or else the CUDA kernels will crash with an illegal memory access
-                vision_tokens = [self.tokenizer.special_tokens["<|image|>"], 128256]
-                masks = [target.eq(t) for t in vision_tokens]
-                if len(masks) > 1:
-                    mask = torch.logical_or(*masks)
-                else:
-                    mask = masks[0]
-                target[mask] = 0
 
             if logprobs:
                 token_logprobs[:, prev_pos + 1 : cur_pos + 1] = -F.cross_entropy(
@@ -179,6 +159,7 @@ class Llama:
                     reduction="none",
                     ignore_index=pad_id,
                 )
+
             eos_reached |= (~input_text_mask[:, cur_pos]) & (torch.isin(next_token, stop_tokens))
             yield TokenResult(
                 token=next_token[0].item(),
