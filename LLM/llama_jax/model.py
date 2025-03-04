@@ -40,3 +40,92 @@ def RMSNorm(x: jnp.array, w: jnp.array, eps: float = 1e-6) -> jnp.array:
 
     rms = jax.lax.rsqrt(jnp.mean(x**2, axis=-1, keepdims=True) + eps)
     return x * rms * w
+
+
+
+def apply_scaling(freqs: jnp.ndarray, scale_factor: float, original: int) -> jnp.ndarray:
+    low_freq_factor = 1.0
+    high_freq_factor = 1.0
+    old_context_len = float(original)
+
+    low_freq_wavelen = old_context_len / low_freq_factor
+    high_freq_wavelen = old_context_len / high_freq_factor
+
+    wavelen = 2 * jnp.pi / freqs
+    new_freqs = jnp.where(wavelen > low_freq_wavelen, freqs / scale_factor, freqs)
+    smooth = (old_context_len / wavelen - low_freq_factor) / (high_freq_factor - low_freq_factor)
+    return jnp.where(
+        (wavelen >= high_freq_wavelen) & (wavelen <= low_freq_wavelen),
+        (1 - smooth) * new_freqs / scale_factor + smooth * new_freqs,
+        new_freqs
+    )
+
+def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0,
+                             use_scaled: bool = False, scale_factor: float = 32.0, original: int = 8192):
+    dtype = jnp.float32
+    freqs = 1.0 / (theta ** (jnp.arange(0, dim, 2)[: (dim // 2)].astype(dtype) / dim))
+    t = jnp.arange(end, dtype=dtype)
+    
+    if use_scaled:
+        freqs = apply_scaling(freqs, scale_factor, original)
+
+    freqs = jnp.outer(t, freqs)
+    freq_cis = jnp.exp(1j * freqs)
+    return freq_cis
+
+
+def reshape_for_broadcast(freqs_cis: jnp.ndarray, x: jnp.ndarray) -> jnp.ndarray:
+    ndim = x.ndim
+    assert 0 <= 1 < ndim, f"Expected at least 2D x, got shape {x.shape}"
+    shape = [
+        (x.shape[i] if (i == 1 or i == ndim - 1) else 1)
+        for i in range(ndim)
+    ]
+    return jnp.reshape(freqs_cis, shape)
+
+def apply_rotary_emb(
+    xq: jnp.ndarray,
+    xk: jnp.ndarray,
+    freqs_cis: jnp.ndarray,
+) -> tuple[jnp.ndarray, jnp.ndarray]:
+    dtype = jnp.float32
+
+    xq_ = xq.astype(dtype)
+    hidden_q = xq_.shape[-1]
+    xq_reshaped = jnp.reshape(xq_, xq_.shape[:-1] + (hidden_q // 2, 2))
+
+    xk_ = xk.astype(jnp.float32)
+    hidden_k = xk_.shape[-1]
+    xk_reshaped = jnp.reshape(xk_, xk_.shape[:-1] + (hidden_k // 2, 2))
+
+    # complex from (real, imag)
+    xq_real = xq_reshaped[..., 0]
+    xq_imag = xq_reshaped[..., 1]
+    xk_real = xk_reshaped[..., 0]
+    xk_imag = xk_reshaped[..., 1]
+
+    xq_complex = xq_real + 1j * xq_imag
+    xk_complex = xk_real + 1j * xk_imag
+
+    freqs_cis_brd = reshape_for_broadcast(freqs_cis, xq_complex)
+
+    xq_mul = xq_complex * freqs_cis_brd
+    xk_mul = xk_complex * freqs_cis_brd
+
+    def view_as_real(z: jnp.ndarray) -> jnp.ndarray:
+        return jnp.stack([jnp.real(z), jnp.imag(z)], axis=-1)
+
+    xq_realimag = view_as_real(xq_mul)  # shape (..., 2)
+    xk_realimag = view_as_real(xk_mul)  # shape (..., 2)
+
+    # Flatten(3) => flatten the last two dimensions into one, 
+    # e.g. if shape is [b, t, h, 2], flatten from dim=3 => [b, t, h * 2]
+    # We'll do that by '... + (-1,)', effectively combining the last 2 dims.
+    xq_out = jnp.reshape(xq_realimag, xq_realimag.shape[:3] + (-1,))
+    xk_out = jnp.reshape(xk_realimag, xk_realimag.shape[:3] + (-1,))
+
+    # back to original dtype
+    xq_out = xq_out.astype(xq.dtype)
+    xk_out = xk_out.astype(xk.dtype)
+
+    return xq_out, xk_out

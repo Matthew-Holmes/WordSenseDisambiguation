@@ -102,11 +102,11 @@ def apply_scaling(freqs: torch.Tensor, scale_factor: float, original: int) -> to
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0, use_scaled: bool = False, scale_factor: float = 32.0, original: int = 8192):
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
 
-    print(f"orinal freqs: {freqs}")
+    # print(f"orinal freqs: {freqs}")
     t = torch.arange(end, device=freqs.device, dtype=torch.float32)
     if use_scaled:
         freqs = apply_scaling(freqs, scale_factor, original)
-        print(f"rescaled freqs: {freqs}")
+        # print(f"rescaled freqs: {freqs}")
     
     freqs = torch.outer(t, freqs)
     freqs_cis = torch.polar(torch.ones_like(freqs), freqs)  # complex64
