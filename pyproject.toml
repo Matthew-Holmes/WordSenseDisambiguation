@@ -23,6 +23,7 @@ dependencies = [
     "fairscale>=0.4.13",
     "termcolor>=2.5.0",
     "pydantic>=2.10.6",
+    "jax>=0.5.1",
 ]
 
 [tool.uv.sources]
