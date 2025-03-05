@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional, Tuple
+import math
 
 import jax.numpy as jnp
 import jax
@@ -60,6 +61,7 @@ def apply_scaling(freqs: jnp.ndarray, scale_factor: float, original: int) -> jnp
         new_freqs
     )
 
+
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0,
                              use_scaled: bool = False, scale_factor: float = 32.0, original: int = 8192):
     dtype = jnp.float32
@@ -82,6 +84,7 @@ def reshape_for_broadcast(freqs_cis: jnp.ndarray, x: jnp.ndarray) -> jnp.ndarray
         for i in range(ndim)
     ]
     return jnp.reshape(freqs_cis, shape)
+
 
 def apply_rotary_emb(
     xq: jnp.ndarray,
@@ -129,3 +132,54 @@ def apply_rotary_emb(
     xk_out = xk_out.astype(xk.dtype)
 
     return xq_out, xk_out
+
+
+def repeat_kv(x: jnp.array, n_rep: int) -> jnp.array:
+    bs, slen, n_kv_heads, head_dim = x.shape
+    if n_rep == 1:
+        return x
+    return jnp.reshape(
+        jnp.tile(x[:, :, :, None, :], (1, 1, 1, n_rep, 1)), 
+        (bs, slen, n_kv_heads * n_rep, head_dim)
+    )
+
+
+def attention_block(x: jnp.array, mask: Optional[jnp.array], freqs_cis: jnp.array,
+                    wq: jnp.array, wk: jnp.array, wv: jnp.array,
+                    wo: jnp.array,
+                    n_heads: int, n_kv_heads: int) -> jnp.array:
+    
+    bs, seqlen, model_dim = x.shape
+
+    head_dim         = model_dim // n_heads
+    n_local_heads    = n_heads
+    n_local_kv_heads = n_kv_heads
+    n_rep            = n_local_heads // n_local_kv_heads
+
+    xq = jnp.dot(x, wq.T).reshape(bs, seqlen, n_local_heads,    head_dim)
+    xk = jnp.dot(x, wk.T).reshape(bs, seqlen, n_local_kv_heads, head_dim)
+    xv = jnp.dot(x, wv.T).reshape(bs, seqlen, n_local_kv_heads, head_dim)
+
+    xq, xk = apply_rotary_emb(xq, xk, freqs_cis)
+
+    keys   = repeat_kv(xk, n_rep)
+    values = repeat_kv(xv, n_rep)
+
+    xq     = jnp.transpose(xq,     (0, 2, 1, 3))  # (bs, n_local_heads, seqlen, head_dim)
+    keys   = jnp.transpose(keys,   (0, 2, 1, 3))  # (bs, n_local_heads, seqlen, head_dim)
+    values = jnp.transpose(values, (0, 2, 1, 3))  # (bs, n_local_heads, seqlen, head_dim)
+
+    # here is where we compute the cross-attention
+    scores = jnp.matmul(xq, jnp.transpose(keys, (0, 1, 3, 2))) / math.sqrt(head_dim)
+
+    if mask is not None:
+        scores += mask  # mask should contain -inf for positions to ignore
+    scores = jax.nn.softmax(scores, axis=-1)
+
+    output = jnp.matmul(scores, values)
+
+    output = jnp.transpose(output, (0, 2, 1, 3)).reshape(bs, seqlen, -1)
+
+    output = jnp.dot(output, wo.T)
+
+    return output
