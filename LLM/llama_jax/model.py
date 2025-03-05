@@ -61,7 +61,6 @@ def apply_scaling(freqs: jnp.ndarray, scale_factor: float, original: int) -> jnp
         new_freqs
     )
 
-
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0,
                              use_scaled: bool = False, scale_factor: float = 32.0, original: int = 8192):
     dtype = jnp.float32
@@ -84,7 +83,6 @@ def reshape_for_broadcast(freqs_cis: jnp.ndarray, x: jnp.ndarray) -> jnp.ndarray
         for i in range(ndim)
     ]
     return jnp.reshape(freqs_cis, shape)
-
 
 def apply_rotary_emb(
     xq: jnp.ndarray,
@@ -177,9 +175,15 @@ def attention_block(x: jnp.array, mask: Optional[jnp.array], freqs_cis: jnp.arra
     scores = jax.nn.softmax(scores, axis=-1)
 
     output = jnp.matmul(scores, values)
-
     output = jnp.transpose(output, (0, 2, 1, 3)).reshape(bs, seqlen, -1)
-
     output = jnp.dot(output, wo.T)
 
     return output
+
+
+def feed_forward(x: jnp.array,
+                 gate: jnp.array, down: jnp.array, up: jnp.array) -> jnp.array:
+
+    return jnp.dot(jax.nn.silu(jnp.dot(x, gate.T)) * jnp.dot(x, up.T), down.T)
+                
+    
