@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 import math
 
 import jax.numpy as jnp
@@ -187,3 +187,28 @@ def feed_forward(x: jnp.array,
     return jnp.dot(jax.nn.silu(jnp.dot(x, gate.T)) * jnp.dot(x, up.T), down.T)
                 
     
+def transformer_block(x: jnp.ndarray,
+                      params: Dict, 
+                      mask: Optional[jnp.ndarray], 
+                      freqs_cis: jnp.ndarray,
+                      n_heads: int, n_kv_heads: int):
+    # expects a params pytree
+    attn_params = params["attention"]
+    ff_params   = params["feed_forward"]
+    norms       = params["norms"]
+
+    x_norm = RMSNorm(x, norms["pre_attention_rms"])
+
+    attn_out = attention_block(
+        x_norm, mask, freqs_cis,
+        attn_params["wq"], attn_params["wk"], attn_params["wv"], attn_params["wo"],
+        n_heads, n_kv_heads
+    )
+    x = x + attn_out # residual
+    x_norm = RMSNorm(x, norms["post_attention_rms"])
+
+    ff_out = feed_forward(x_norm,
+        ff_params["gate"], ff_params["down"], ff_params["up"])
+    x = x + ff_out   # another residual
+
+    return x
