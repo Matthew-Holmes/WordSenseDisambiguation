@@ -31,8 +31,24 @@ Once you've configured Docker, run:
 ```bash
 docker --version
 ```
+To check that is has been installed correctly. You can test it further with:
 
-To check that is has been installed correctly
+```bash
+docker run hello-world
+```
+
+### 2. install minikube
+
+Follow the instructions on their website, depends on CPU architecture, for me it was:
+
+```bash
+curl -LO https://github.com/kubernetes/minikube/releases/latest/download/minikube-linux-amd64
+sudo install minikube-linux-amd64 /usr/local/bin/minikube && rm minikube-linux-amd64
+```
+
+(on WSL)
+
+
 
 
 
