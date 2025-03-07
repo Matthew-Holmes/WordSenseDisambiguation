@@ -212,3 +212,26 @@ def transformer_block(x: jnp.ndarray,
     x = x + ff_out   # another residual
 
     return x
+
+
+def transformer(tokens: jnp.ndarray,
+                params: Dict,
+                mask: Optional[jnp.ndarray], 
+                n_heads: int, n_kv_heads: int):
+
+    # bsz, seqlen = tokens.shape
+    # use tokens as indices in the embedding matrix
+    h = params["tok_embeddings"][tokens]  # (bsz, seqlen, dim)
+
+    freqs_cis = params["freqs_cis"]
+
+    for layer_params in params["layers"]:
+        h = transformer_block(h, layer_params, mask, freqs_cis, n_heads, n_kv_heads)
+
+    h = RMSNorm(h, params["norm_scale"])
+
+    # project to vocabulary logits
+    output = jnp.dot(h, params["output_weight"].T)
+
+    return output
+

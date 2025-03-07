@@ -311,7 +311,7 @@ class Transformer(nn.Module):
         self.output = ColumnParallelLinear(params.dim, params.vocab_size, bias=False)
 
         # correct way to tie weights
-        self.output.weight = nn.Parameter(self.tok_embeddings.weight.T)
+        self.output.weight = nn.Parameter(self.tok_embeddings.weight)
 
         # only precompute cache len freq cis, since that is as much as we will be able to predict with this
         self.freqs_cis = precompute_freqs_cis(
