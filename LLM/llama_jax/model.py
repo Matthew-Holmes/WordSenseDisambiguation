@@ -37,10 +37,10 @@ class ModelArgs:
 def RMSNorm(x: jnp.array, w: jnp.array, eps: float = 1e-6) -> jnp.array:
 
     assert w.dtype == jnp.bfloat16, f"Expected weight to be bfloat16, but got {w.dtype}"
-    # TODO - what dtype should x be
+    assert x.dtype == jnp.bfloat16, f"Expected x to be bfloat16, but got {x.dtype}"
 
     rms = jax.lax.rsqrt(jnp.mean(x**2, axis=-1, keepdims=True) + eps)
-    return x * rms * w
+    return (x * rms * w).astype(jnp.bfloat16)
 
 
 
@@ -95,7 +95,7 @@ def apply_rotary_emb(
     hidden_q = xq_.shape[-1]
     xq_reshaped = jnp.reshape(xq_, xq_.shape[:-1] + (hidden_q // 2, 2))
 
-    xk_ = xk.astype(jnp.float32)
+    xk_ = xk.astype(dtype)
     hidden_k = xk_.shape[-1]
     xk_reshaped = jnp.reshape(xk_, xk_.shape[:-1] + (hidden_k // 2, 2))
 
@@ -147,6 +147,8 @@ def attention_block(x: jnp.array, mask: Optional[jnp.array], freqs_cis: jnp.arra
                     wo: jnp.array,
                     n_heads: int, n_kv_heads: int) -> jnp.array:
     
+    assert x.dtype == jnp.bfloat16, f"Expected x to be bfloat16, but got {x.dtype}"
+    
     bs, seqlen, model_dim = x.shape
 
     head_dim         = model_dim // n_heads
@@ -178,11 +180,13 @@ def attention_block(x: jnp.array, mask: Optional[jnp.array], freqs_cis: jnp.arra
     output = jnp.transpose(output, (0, 2, 1, 3)).reshape(bs, seqlen, -1)
     output = jnp.dot(output, wo.T)
 
-    return output
+    return output.astype(jnp.bfloat16)
 
 
 def feed_forward(x: jnp.array,
                  gate: jnp.array, down: jnp.array, up: jnp.array) -> jnp.array:
+        
+    assert x.dtype == jnp.bfloat16, f"Expected x to be bfloat16, but got {x.dtype}"
 
     return jnp.dot(jax.nn.silu(jnp.dot(x, gate.T)) * jnp.dot(x, up.T), down.T)
                 
@@ -192,6 +196,9 @@ def transformer_block(x: jnp.ndarray,
                       mask: Optional[jnp.ndarray], 
                       freqs_cis: jnp.ndarray,
                       n_heads: int, n_kv_heads: int):
+    
+    assert x.dtype == jnp.bfloat16, f"Expected x to be bfloat16, but got {x.dtype}"
+
     # expects a params pytree
     attn_params = params["attention"]
     ff_params   = params["feed_forward"]
@@ -222,6 +229,8 @@ def transformer(tokens: jnp.ndarray,
     # bsz, seqlen = tokens.shape
     # use tokens as indices in the embedding matrix
     h = params["tok_embeddings"][tokens]  # (bsz, seqlen, dim)
+
+    assert h.dtype == jnp.bfloat16, f"Expected h to be bfloat16, but got {h.dtype}"
 
     freqs_cis = params["freqs_cis"]
 
