@@ -169,7 +169,6 @@ class Llama:
             max_gen_len = self.model.params.cache_len - 1
 
         model_input = self.formatter.encode_content(content)
-
         tokens = []
         token_logprobs = []
         decoded_tokens = []
