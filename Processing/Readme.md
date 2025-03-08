@@ -48,6 +48,16 @@ sudo install minikube-linux-amd64 /usr/local/bin/minikube && rm minikube-linux-a
 
 (on WSL)
 
+### 3. Using Llama Jax to process the dataset
+
+Currently we have a Python module to play around with the Llama model on toy prompts. In this notebook we develop this into functionality that we can containerise and use to process the dataset build from SemCore.
+
+To get this operational the following are required:
+* quick weight loading into ram (no weird conversions from PyTorch format) - `001pickle_jax_weights.ipynb`
+* reusable JIT compilation information
+* prompt batching and normalisation
+* options to return intermediate activations, not just the final results
+
 
 
 

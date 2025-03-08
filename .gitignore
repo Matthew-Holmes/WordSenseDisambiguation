@@ -5,6 +5,7 @@ __pycache__/
 
 Data/Processed
 Data/Raw
+Data/ModelWeights
 
 # uv stuff
 uv.lock
