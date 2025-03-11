@@ -244,3 +244,25 @@ def transformer(tokens: jnp.ndarray,
 
     return output
 
+
+def reporting_transformer(tokens: jnp.ndarray,
+                          params: Dict,
+                          mask: Optional[jnp.ndarray], 
+                          n_heads: int, n_kv_heads: int):
+                          
+
+    # bsz, seqlen = tokens.shape
+    # use tokens as indices in the embedding matrix
+    h = params["tok_embeddings"][tokens]  # (bsz, seqlen, dim)
+
+    assert h.dtype == jnp.bfloat16, f"Expected h to be bfloat16, but got {h.dtype}"
+
+    freqs_cis = params["freqs_cis"]
+
+    acts = []
+    for layer_params in params["layers"]:
+        h = transformer_block(h, layer_params, mask, freqs_cis, n_heads, n_kv_heads)
+        acts.append(h)
+
+    return acts
+
