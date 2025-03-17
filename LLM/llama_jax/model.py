@@ -170,11 +170,21 @@ def attention_block(x: jnp.array, mask: Optional[jnp.array], freqs_cis: jnp.arra
     values = jnp.transpose(values, (0, 2, 1, 3))  # (bs, n_local_heads, seqlen, head_dim)
 
     # here is where we compute the cross-attention
-    scores = jnp.matmul(xq, jnp.transpose(keys, (0, 1, 3, 2))) / math.sqrt(head_dim)
+    scores = jnp.matmul(xq, jnp.transpose(keys, (0, 1, 3, 2))) / math.sqrt(head_dim) #(bs, n_local_heads, seqlen, seqlen)
 
     if mask is not None:
-        scores += mask  # mask should contain -inf for positions to ignore
+        # scores_unmasked = scores 
+        scores += mask[:, None, None, :]   # mask should contain -inf for positions to ignore
+
+        # print("Attention Scores Before Masking (Batch 0, Head 0):", scores_unmasked[0, 0])
+        # print("Mask (Batch 0):", mask[0])  # Verify actual mask values
+        # print("Attention Scores After Masking (Batch 0, Head 0):", scores[0, 0])
+
     scores = jax.nn.softmax(scores, axis=-1)
+    # print("Softmaxed Attention Scores (Batch 0, Head 0):", scores[0, 0])
+
+    # sum_probs = scores.sum(axis=-1)
+    # print("Sum of softmax probabilities (should be 1 for unmasked tokens):", sum_probs[0])
 
     output = jnp.matmul(scores, values)
     output = jnp.transpose(output, (0, 2, 1, 3)).reshape(bs, seqlen, -1)
@@ -264,5 +274,5 @@ def reporting_transformer(tokens: jnp.ndarray,
         h = transformer_block(h, layer_params, mask, freqs_cis, n_heads, n_kv_heads)
         acts.append(h)
 
-    return acts
+    return jnp.stack(acts, axis=1)  # (batch, layers, seq_len, hidden_dim)
 
