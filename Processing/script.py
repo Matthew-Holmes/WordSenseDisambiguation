@@ -385,6 +385,28 @@ def zip_and_clean_jax_store(store_path: str):
     print(f"✅ JAX store compressed to {archive_name}.zip and cleaned up.")
 
 
+def unzip_jax_store(zip_path: str, extract_to: str = None):
+    """
+    Extracts the zip file created by zip_and_clean_jax_store and restores the files.
+
+    :param zip_path: Path to the .zip file to be extracted.
+    :param extract_to: Directory to extract the files to. Defaults to the zip filename without extension.
+    """
+    if not zip_path.endswith(".zip"):
+        raise ValueError("Provided file is not a .zip archive")
+
+    extract_to = extract_to or zip_path.rstrip(".zip")
+
+    if not os.path.exists(zip_path):
+        raise FileNotFoundError(f"Zip file not found: {zip_path}")
+
+    os.makedirs(extract_to, exist_ok=True)
+
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        zip_ref.extractall(extract_to)
+
+    print(f"✅ JAX store unzipped to {extract_to}")
+    
 # -----------------------------------------------------------------------
 # 5. MAIN FUNCTION
 # -----------------------------------------------------------------------
