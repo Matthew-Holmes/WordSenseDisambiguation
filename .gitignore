@@ -7,6 +7,9 @@ Data/Processed
 Data/Raw
 Data/ModelWeights
 
+# data store
+*.pkl
+
 # uv stuff
 uv.lock
 
