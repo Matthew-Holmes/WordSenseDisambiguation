@@ -24,6 +24,7 @@ dependencies = [
     "termcolor>=2.5.0",
     "pydantic>=2.10.6",
     "jax>=0.5.1",
+    "seaborn>=0.13.2",
 ]
 
 [tool.uv.sources]
