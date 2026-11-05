@@ -1,0 +1,8 @@
+uniform_chunk1 normalise_uncentred=False, normalise_centred=False: median 0.5000 mean 0.5060 
+uniform_chunk1 normalise_uncentred=False, normalise_centred=True: median 0.5000 mean 0.5141 
+uniform_chunk1 normalise_uncentred=True, normalise_centred=False: median 0.6125 mean 0.5519 
+uniform_chunk1 normalise_uncentred=True, normalise_centred=True: median 0.6000 mean 0.5661 <== MATCH
+uniform2_chunk0 normalise_uncentred=False, normalise_centred=False: median 0.4222 mean 0.4659 
+uniform2_chunk0 normalise_uncentred=False, normalise_centred=True: median 0.3842 mean 0.4524 
+uniform2_chunk0 normalise_uncentred=True, normalise_centred=False: median 0.3542 mean 0.4498 
+uniform2_chunk0 normalise_uncentred=True, normalise_centred=True: median 0.3417 mean 0.4417

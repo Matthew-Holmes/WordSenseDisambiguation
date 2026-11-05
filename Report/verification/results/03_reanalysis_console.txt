@@ -1,0 +1,41 @@
+
+=== original_chunk0
+{'processed_rows': 1007, 'pickles_in_store': 1007, 'csv_keys_missing_from_store': 0, 'instances': 100, 'instances_with_all_candidate_definitions': 100, 'instances_scored': 91, 'instances_with_misaligned_focus_token': 18}
+reproduced: {'mixture_raw2_centred12_median': (0.8, 0.5), 'mixture_raw2_centred12_mean': (0.6779293269736573, 0.5)}
+raw_dot: best layer 2 mean 0.6084 CI (0.5335103310989279, 0.6803839645774034)
+cosine: best layer 1 mean 0.6039 CI (0.5285096948408198, 0.6786614302445495)
+baselines: {'list_order (earlier = better)': 0.8034628839786531, 'definition_norm (ignores sentence)': 0.5885516597898373, 'typicality d.mean(d) (ignores sentence)': 0.6343539001625962, 'raw_dot_with_shuffled_sentence': 0.522168690896798, 'raw_dot_with_true_sentence': 0.6084492584535112}
+grid (index ties): {'observed_grid_max': 0.7023620382299745, 'observed_grid_argmax': [3, 3], 'observed_cell_(2,12)': 0.677365664445709, 'null_grid_max_mean': 0.5833364420896798, 'null_grid_max_95th_pct': 0.6254941588927128, 'p_value_grid_max': 0.0, 'n_samples': 91}
+grid (random ties): {'observed_grid_max': 0.6274407964468312, 'observed_cell_(2,12)': 0.6274407964468312, 'null_grid_max_95th_pct': 0.6079497903651943}
+
+=== uniform_chunk0
+{'processed_rows': 947, 'pickles_in_store': 947, 'csv_keys_missing_from_store': 0, 'instances': 100, 'instances_with_all_candidate_definitions': 100, 'instances_scored': 97, 'instances_with_misaligned_focus_token': 58}
+reproduced: {'mixture_raw2_centred12_median': (0.5833333333333333, 0.2142857142857143), 'mixture_raw2_centred12_mean': (0.5372376751421608, 0.2142857142857143), 'cell64_(7,7),(8,8)_from_start_mean_multi_version': (0.5303671196634696, 0.16666666666666663), 'cell64_2expert_from_start_(7,8)_mean_avg': (0.5303671196634696, 0.16666666666666663), 'cell64_2expert_from_start_(7,8)_mean_min': (0.5342591261788031, 0.16666666666666663), 'cell64_2expert_from_start_(7,8)_mean_max': (0.5606135635256074, 0.33333333333333337), 'cell64_2expert_from_start_(7,8)_mean_har': (0.5378386972081711, 0.11111111111111116)}
+raw_dot: best layer 2 mean 0.5353 CI (0.46163320836823424, 0.6109615318080133)
+cosine: best layer 14 mean 0.5335 CI (0.46109274066510897, 0.604927474051557)
+baselines: {'list_order (earlier = better)': 0.6213601189517654, 'definition_norm (ignores sentence)': 0.547945827821396, 'typicality d.mean(d) (ignores sentence)': 0.5474539911159906, 'raw_dot_with_shuffled_sentence': 0.5404876834481298, 'raw_dot_with_true_sentence': 0.5353421370915282}
+grid (index ties): {'observed_grid_max': 0.5863383717742608, 'observed_grid_argmax': [2, 2], 'observed_cell_(2,12)': 0.5372376751421607, 'null_grid_max_mean': 0.580943408638207, 'null_grid_max_95th_pct': 0.6225420653874871, 'p_value_grid_max': 0.407, 'n_samples': 97}
+grid (random ties): {'observed_grid_max': 0.5587160885591943, 'observed_cell_(2,12)': 0.5373311498930408, 'null_grid_max_95th_pct': 0.6061705169369422}
+
+=== uniform_chunk1
+{'processed_rows': 996, 'pickles_in_store': 996, 'csv_keys_missing_from_store': 0, 'instances': 100, 'instances_with_all_candidate_definitions': 100, 'instances_scored': 100, 'instances_with_misaligned_focus_token': 60}
+reproduced: {'mixture_raw2_centred12_median': (0.5, 0.16346153846153844), 'mixture_raw2_centred12_mean': (0.5059988331267743, 0.16346153846153844)}
+raw_dot: best layer 0 mean 0.5795 CI (0.5141546956796377, 0.6501584688897867)
+cosine: best layer 0 mean 0.5845 CI (0.5113826046339109, 0.652100862751985)
+baselines: {'list_order (earlier = better)': 0.627883742008742, 'definition_norm (ignores sentence)': 0.5288715674209482, 'typicality d.mean(d) (ignores sentence)': 0.54306007966364, 'raw_dot_with_shuffled_sentence': 0.499086816170098, 'raw_dot_with_true_sentence': 0.5795423206208811}
+grid (index ties): {'observed_grid_max': 0.6295178737694218, 'observed_grid_argmax': [3, 2], 'observed_cell_(2,12)': 0.5052584485113897, 'null_grid_max_mean': 0.582918796785902, 'null_grid_max_95th_pct': 0.6225025011742967, 'p_value_grid_max': 0.029, 'n_samples': 100}
+grid (random ties): {'observed_grid_max': 0.5841312597330013, 'observed_cell_(2,12)': 0.5038518512857134, 'null_grid_max_95th_pct': 0.6025863879292245}
+
+=== uniform2_chunk0
+{'processed_rows': 533, 'pickles_in_store': 533, 'csv_keys_missing_from_store': 0, 'instances': 100, 'instances_with_all_candidate_definitions': 100, 'instances_scored': 100, 'instances_with_misaligned_focus_token': 61}
+reproduced: {'mixture_raw2_centred12_median': (0.4222222222222222, 0.0), 'mixture_raw2_centred12_mean': (0.46592376775271516, 0.0)}
+raw_dot: best layer 15 mean 0.574 CI (0.4936817773600668, 0.6496748120300752)
+cosine: best layer 15 mean 0.5751 CI (0.49181345029239765, 0.6578974206349205)
+baselines: {'list_order (earlier = better)': 0.4682270258980785, 'definition_norm (ignores sentence)': 0.5350678780284044, 'typicality d.mean(d) (ignores sentence)': 0.5241764828738513, 'raw_dot_with_shuffled_sentence': 0.5747407581453634, 'raw_dot_with_true_sentence': 0.574016290726817}
+grid (index ties): {'observed_grid_max': 0.582017126148705, 'observed_grid_argmax': [2, 0], 'observed_cell_(2,12)': 0.46592376775271505, 'null_grid_max_mean': 0.5918411023391813, 'null_grid_max_95th_pct': 0.641668253968254, 'p_value_grid_max': 0.603, 'n_samples': 100}
+grid (random ties): {'observed_grid_max': 0.577608187134503, 'observed_cell_(2,12)': 0.5268463868003341, 'null_grid_max_95th_pct': 0.6053485850041771}
+
+pooled (2,12): {'n': 297, 'mean': 0.522528435515925, '95ci': (0.4835236073492138, 0.5606684316522391)}
+saved /mnt/c/Users/Matt/Projects/WordSenseDisambiguation/Report/verification/results/03_reanalysis.json
+
+[exited with code 0]

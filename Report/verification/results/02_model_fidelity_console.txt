@@ -1,0 +1,39 @@
+Part A: weight provenance
+  layer0.wq: {'hf_equals_meta': False, 'hf_equals_permute(meta)': True, 'unpermute(hf)_equals_meta': True}
+  layer0.wk: {'hf_equals_meta': False, 'hf_equals_permute(meta)': True, 'unpermute(hf)_equals_meta': True}
+  layer0.wv: {'hf_equals_meta': True}
+  layer0.wo: {'hf_equals_meta': True}
+  layer7.wq: {'hf_equals_meta': False, 'hf_equals_permute(meta)': True, 'unpermute(hf)_equals_meta': True}
+  layer7.wk: {'hf_equals_meta': False, 'hf_equals_permute(meta)': True, 'unpermute(hf)_equals_meta': True}
+  layer7.wv: {'hf_equals_meta': True}
+  layer7.wo: {'hf_equals_meta': True}
+  layer15.wq: {'hf_equals_meta': False, 'hf_equals_permute(meta)': True, 'unpermute(hf)_equals_meta': True}
+  layer15.wk: {'hf_equals_meta': False, 'hf_equals_permute(meta)': True, 'unpermute(hf)_equals_meta': True}
+  layer15.wv: {'hf_equals_meta': True}
+  layer15.wo: {'hf_equals_meta': True}
+  pickle_layer0.wq_equals_hf_q_proj: True
+Part B: HF reference forward passes
+  RoPE indices where project != HF: [15, 16, 17]
+Part B: JAX variants
+  J0 done (110s)
+  re-implementation vs J0 max abs diff: 0.0
+  Jc_causal_only done (55s)
+  J1_unpermuted_qk done (25s)
+  J2_unpermuted_plus_causal done (27s)
+  J3_all_fixes_no_bos done (43s)
+  J4_all_fixes_with_bos done (49s)
+  J0_as_used                   focus cos L1/L8/L16: 0.895/0.281/0.582  centred: 0.941/0.056/0.156  retrieval L8/L16: 1.00/0.83  top1-agree: 0.16
+  Jc_causal_only               focus cos L1/L8/L16: 0.925/0.763/0.827  centred: 0.961/0.996/0.654  retrieval L8/L16: 1.00/0.96  top1-agree: 0.46
+  J1_unpermuted_qk             focus cos L1/L8/L16: 0.965/0.329/0.606  centred: 0.837/0.057/0.212  retrieval L8/L16: 1.00/0.83  top1-agree: 0.31
+  J2_unpermuted_plus_causal    focus cos L1/L8/L16: 1.000/1.000/1.000  centred: 1.000/1.000/1.000  retrieval L8/L16: 1.00/1.00  top1-agree: 0.99
+  J3_all_fixes_no_bos          focus cos L1/L8/L16: 1.000/1.000/1.000  centred: 1.000/1.000/1.000  retrieval L8/L16: 1.00/1.00  top1-agree: 0.99
+  J4_all_fixes_with_bos        focus cos L1/L8/L16: 1.000/1.000/1.000  centred: 1.000/1.000/1.000  retrieval L8/L16: 1.00/1.00  top1-agree: 0.99
+  J0_as_used_vs_HF_with_BOS    focus cos L1/L8/L16: 0.884/0.264/0.586  centred: 0.554/0.301/0.183  retrieval L8/L16: 1.00/0.92  top1-agree: 0.18
+Part C: capital-of-France check
+  hf_reference_last_real_token: [(' Paris', -0.938), (' a', -2.475), (' the', -2.654), (' one', -3.475), (' also', -3.486)]
+  notebook_jax_at_position_-1_(a_pad_token): [('The', -3.184), (' The', -3.246), ('France', -3.871), ('A', -3.871), (' I', -3.871)]
+  notebook_jax_at_last_real_token: [(' Paris', -1.068), (' the', -1.818), (' a', -2.693), (' located', -2.943), (' also', -3.318)]
+  fixed_jax_at_last_real_token: [(' Paris', -0.927), (' a', -2.463), (' the', -2.674), (' one', -3.486), (' also', -3.495)]
+saved /mnt/c/Users/Matt/Projects/WordSenseDisambiguation/Report/verification/results/02_model_fidelity.json
+
+[exited with code 0]

@@ -1,0 +1,11 @@
+100 usable test instances
+sentences embedded (371s, 7731 tokens)
+glosses embedded (689s, 18863 tokens)
+S_plain x G_mean: L8 0.6275 [0.5468, 0.708] acc@1 0.46 (chance 0.3619); best L10 0.6628
+S_plain x G_echo: L8 0.5219 [0.4382, 0.6117] acc@1 0.38 (chance 0.3619); best L9 0.5938
+S_echo x G_mean: L8 0.6868 [0.6085, 0.7601] acc@1 0.53 (chance 0.3619); best L6 0.6967
+S_echo x G_echo: L8 0.5316 [0.4408, 0.6264] acc@1 0.4 (chance 0.3619); best L10 0.6015
+embedding 951 kNN example sentences
+knn_centroid_S_plain_all: L8 0.5673 [0.476, 0.6564] acc@1 0.47 (chance 0.3619); best L4 0.5975
+knn_centroid_S_plain_full_coverage_subset: L8 0.6373 [0.5269, 0.7402] acc@1 0.5735 (chance 0.3825); best L9 0.6846
+saved /mnt/c/Users/Matt/Projects/WordSenseDisambiguation/Report/verification/results/04_pilot_fixed_pipeline.json

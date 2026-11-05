@@ -1,0 +1,30 @@
+
+=== original_chunk0: 100 rows
+misaligned focus token: 20/100 (20.0%); status={'ok': 100}
+{'rows': 100, 'sentences_containing_token0_bang_masked_as_padding': 0.0, 'definition_prompts_containing_token0': 0.0, 'sentences_longer_than_32_tokens_clipped': 0.12, 'definition_prompts_longer_than_32_tokens_truncated': 0.004410143329658214, 'sentences_altered_by_fix_whitespace_insertion_rule': 0.0, 'focus_words_spanning_multiple_tokens': 0.05, 'definition_prompts_with_stray_whitespace': 0.0}
+{'rows': 100, "gold_definition_in_candidates_with_pipeline_split('|')": 1.0, 'gold_definition_in_candidates': 1.0, 'gold_definition_duplicated_in_candidates': 0.0, 'candidates_mean': 9.07, 'candidates_median': 5.0, 'rows_with_single_candidate': 0.09, 'gold_is_first_listed_candidate': 0.56, 'list_order_baseline_mean_normalised_rank': 0.8034628839786531, 'rows_whose_candidates_span_multiple_POS': 0.57, 'rows_with_a_candidate_of_a_different_POS_to_gold': 0.57}
+
+=== uniform_chunk0: 100 rows
+misaligned focus token: 59/100 (59.0%); status={'ok': 100}
+{'rows': 100, 'sentences_containing_token0_bang_masked_as_padding': 0.01, 'definition_prompts_containing_token0': 0.0, 'sentences_longer_than_32_tokens_clipped': 0.42, 'definition_prompts_longer_than_32_tokens_truncated': 0.008264462809917356, 'sentences_altered_by_fix_whitespace_insertion_rule': 0.0, 'focus_words_spanning_multiple_tokens': 0.06, 'definition_prompts_with_stray_whitespace': 0.0}
+{'rows': 100, "gold_definition_in_candidates_with_pipeline_split('|')": 1.0, 'gold_definition_in_candidates': 1.0, 'gold_definition_duplicated_in_candidates': 0.0, 'candidates_mean': 8.47, 'candidates_median': 6.0, 'rows_with_single_candidate': 0.03, 'gold_is_first_listed_candidate': 0.31, 'list_order_baseline_mean_normalised_rank': 0.6213601189517654, 'rows_whose_candidates_span_multiple_POS': 0.59, 'rows_with_a_candidate_of_a_different_POS_to_gold': 0.59}
+
+=== uniform_chunk1: 100 rows
+misaligned focus token: 60/100 (60.0%); status={'ok': 100}
+{'rows': 100, 'sentences_containing_token0_bang_masked_as_padding': 0.0, 'definition_prompts_containing_token0': 0.0, 'sentences_longer_than_32_tokens_clipped': 0.47, 'definition_prompts_longer_than_32_tokens_truncated': 0.002232142857142857, 'sentences_altered_by_fix_whitespace_insertion_rule': 0.04, 'focus_words_spanning_multiple_tokens': 0.12, 'definition_prompts_with_stray_whitespace': 0.0}
+{'rows': 100, "gold_definition_in_candidates_with_pipeline_split('|')": 1.0, 'gold_definition_in_candidates': 1.0, 'gold_definition_duplicated_in_candidates': 0.0, 'candidates_mean': 8.96, 'candidates_median': 6.0, 'rows_with_single_candidate': 0.0, 'gold_is_first_listed_candidate': 0.21, 'list_order_baseline_mean_normalised_rank': 0.627883742008742, 'rows_whose_candidates_span_multiple_POS': 0.48, 'rows_with_a_candidate_of_a_different_POS_to_gold': 0.48}
+
+=== uniform2_chunk0: 100 rows
+misaligned focus token: 61/100 (61.0%); status={'ok': 100}
+{'rows': 100, 'sentences_containing_token0_bang_masked_as_padding': 0.0, 'definition_prompts_containing_token0': 0.0, 'sentences_longer_than_32_tokens_clipped': 0.5, 'definition_prompts_longer_than_32_tokens_truncated': 0.006928406466512702, 'sentences_altered_by_fix_whitespace_insertion_rule': 0.01, 'focus_words_spanning_multiple_tokens': 0.07, 'definition_prompts_with_stray_whitespace': 1.0}
+{'rows': 100, "gold_definition_in_candidates_with_pipeline_split('|')": 0.0, 'gold_definition_in_candidates': 1.0, 'gold_definition_duplicated_in_candidates': 0.0, 'candidates_mean': 4.33, 'candidates_median': 3.0, 'rows_with_single_candidate': 0.0, 'gold_is_first_listed_candidate': 0.34, 'list_order_baseline_mean_normalised_rank': 0.4682270258980785, 'rows_whose_candidates_span_multiple_POS': 0.23, 'rows_with_a_candidate_of_a_different_POS_to_gold': 0.23}
+
+=== full SemCor: 226036 rows, sampling 20000
+misaligned focus token: 11472/19970 (57.4%); status={'ok': 19970, 'prep_row_raised': 30}
+{'rows': 20000, 'sentences_containing_token0_bang_masked_as_padding': 0.0079, 'definition_prompts_containing_token0': 0.0, 'sentences_longer_than_32_tokens_clipped': 0.42075, 'definition_prompts_longer_than_32_tokens_truncated': 0.009954375777685608, 'sentences_altered_by_fix_whitespace_insertion_rule': 0.0137, 'focus_words_spanning_multiple_tokens': 0.1714, 'definition_prompts_with_stray_whitespace': 0.0}
+{'rows': 20000, "gold_definition_in_candidates_with_pipeline_split('|')": 1.0, 'gold_definition_in_candidates': 1.0, 'gold_definition_duplicated_in_candidates': 0.0003, 'candidates_mean': 9.2868, 'candidates_median': 6.0, 'rows_with_single_candidate': 0.1157, 'gold_is_first_listed_candidate': 0.486, 'list_order_baseline_mean_normalised_rank': 0.7725740851703052, 'rows_whose_candidates_span_multiple_POS': 0.5644, 'rows_with_a_candidate_of_a_different_POS_to_gold': 0.5644}
+{'distinct_words_triggering_exception': ['+ O.', '+ O. - B.', 'A. B.', 'A.I.D.', 'Aug.', 'B.', 'B. + O.', 'B. + O. - C. + O.', 'B.B.C.', 'Bill Jr.', 'Bob ( Bevo )', 'C.', 'C. + O. - B.', 'C.+O.', 'Cal.', 'Calif.', 'Carson Pirie Scott + Co.', 'Colo.', 'D. A.', 'D. C.', 'D.C.', 'Davis st.', 'Dec.', 'E. B.', 'E. M.', 'Ellis Ave.', 'F.', 'Feb.', 'Fig.', 'Figs.', 'Fla.', 'G. O. P.', 'Ga.', 'Hallmark Cards , Inc.', 'I. Q.', 'Ill.', 'International Harvester Co.', 'Ivan Allen Jr.', 'J. F.', 'Jan.', 'Jr.', 'Kan.', 'Ky.', 'L. I.', 'M + R Dietetic Laboratories , Inc.', 'M. A.', 'Mass.', 'Mayor-nominate Ivan Allen Jr.', 'Md.', 'Mich.'], 'n_distinct_words_triggering_exception': 128, 'rows_triggering_colon_exception': 366, 'rows_with_word_parsed_as_NaN': 1, 'rows_triggering_exception': 367, 'chunks_of_100_that_would_crash': 183, 'total_chunks_of_100': 2261}
+SemCoreProcessedUniform.csv 38961 31
+SemCoreProcessedUniform2.csv 38961 31
+
+saved /mnt/c/Users/Matt/Projects/WordSenseDisambiguation/Report/verification/results/01_data_and_alignment.json

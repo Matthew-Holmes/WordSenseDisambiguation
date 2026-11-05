@@ -1,0 +1,54 @@
+{
+  "uniform_chunk1": {
+    "notebook": {
+      "median": 0.6,
+      "mean": 0.5661049684129406
+    },
+    "normalise_uncentred=False, normalise_centred=False": {
+      "median": 0.5,
+      "mean": 0.5059988331267743,
+      "matches_notebook": false
+    },
+    "normalise_uncentred=False, normalise_centred=True": {
+      "median": 0.5,
+      "mean": 0.5140856686949568,
+      "matches_notebook": false
+    },
+    "normalise_uncentred=True, normalise_centred=False": {
+      "median": 0.6125,
+      "mean": 0.5518553874026011,
+      "matches_notebook": false
+    },
+    "normalise_uncentred=True, normalise_centred=True": {
+      "median": 0.6,
+      "mean": 0.5661049684129406,
+      "matches_notebook": true
+    }
+  },
+  "uniform2_chunk0": {
+    "notebook": {
+      "median": 0.5857142857142856,
+      "mean": 0.5479928989139515
+    },
+    "normalise_uncentred=False, normalise_centred=False": {
+      "median": 0.4222222222222222,
+      "mean": 0.46592376775271516,
+      "matches_notebook": false
+    },
+    "normalise_uncentred=False, normalise_centred=True": {
+      "median": 0.3842105263157895,
+      "mean": 0.4523984962406016,
+      "matches_notebook": false
+    },
+    "normalise_uncentred=True, normalise_centred=False": {
+      "median": 0.3541666666666667,
+      "mean": 0.4498239348370927,
+      "matches_notebook": false
+    },
+    "normalise_uncentred=True, normalise_centred=True": {
+      "median": 0.3416666666666667,
+      "mean": 0.4416796157059315,
+      "matches_notebook": false
+    }
+  }
+}
