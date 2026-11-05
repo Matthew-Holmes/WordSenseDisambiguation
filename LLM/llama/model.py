@@ -11,6 +11,10 @@
 # https://github.com/meta-llama/llama-models/blob/main/models/llama3/reference_impl/model.py
 # TODO - disable CUDA
 # TODO - reduce cache size so doesn't blow up RAM
+#
+# WEIGHT LAYOUT: apply_rotary_emb below is Meta's interleaved RoPE, so this model needs Meta-layout
+# wq/wk (consolidated.00.pth). The HuggingFace safetensors permute wq/wk for rotate-half RoPE; to use
+# them here, un-permute first (LLM/llama_jax/weights.py::hf_unpermute).
 
 import math
 from typing import Optional, Tuple
@@ -81,21 +85,23 @@ class RMSNorm(torch.nn.Module):
         return output * self.weight
 
 
-def apply_scaling(freqs: torch.Tensor, scale_factor: float, original: int) -> torch.Tensor:
-    low_freq_factor = 1 # from 4
-    high_freq_factor = 1
-    old_context_len = original
+def apply_scaling(freqs: torch.Tensor, scale_factor: float, original: int,
+                  low_freq_factor: float = 1.0, high_freq_factor: float = 4.0) -> torch.Tensor:
+    """Llama 3 ("llama3") RoPE frequency scaling.
 
-    low_freq_wavelen = old_context_len / low_freq_factor
-    high_freq_wavelen = old_context_len / high_freq_factor
+    Fixed Nov 2026: this previously used high_freq_factor = 1, which collapses the smoothing band
+    (and divides by zero inside it), giving the wrong frequencies at indices 15-17 for Llama-3.2-1B.
+    """
+    low_freq_wavelen = original / low_freq_factor
+    high_freq_wavelen = original / high_freq_factor
 
     wavelen = 2 * torch.pi / freqs
-    new_freqs = torch.where(wavelen > low_freq_wavelen, freqs / scale_factor, freqs)
-    smooth = (old_context_len / wavelen - low_freq_factor) / (high_freq_factor - low_freq_factor)
+    smooth = (original / wavelen - low_freq_factor) / (high_freq_factor - low_freq_factor)
+    smoothed = (1 - smooth) * freqs / scale_factor + smooth * freqs
     return torch.where(
-        (wavelen >= high_freq_wavelen) & (wavelen <= low_freq_wavelen),
-        (1 - smooth) * new_freqs / scale_factor + smooth * new_freqs,
-        new_freqs,
+        wavelen < high_freq_wavelen,
+        freqs,
+        torch.where(wavelen > low_freq_wavelen, freqs / scale_factor, smoothed),
     )
 
 

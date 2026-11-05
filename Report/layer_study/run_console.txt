@@ -1,0 +1,11 @@
+dev_natural: 411 instances, 80 sentences, mean candidates 8.3
+dev_balanced: 200 instances, 196 sentences, mean candidates 5.9
+test_natural: 400 instances, 80 sentences, mean candidates 8.6
+test_balanced: 200 instances, 198 sentences, mean candidates 4.6
+loaded vectors (63s)
+scored (78s)
+dev winner: echo_last+mean/L5-7 (acc1 0.428); best single layer: echo_last+mean/L5
+frequency prior: best lambda on dev 0.1 (dev acc1 0.667)
+test_natural: selected acc1 {'mean': 0.365, 'lo': 0.31270270507563847, 'hi': 0.41600100250626565}
+test_balanced: selected acc1 {'mean': 0.475, 'lo': 0.40793707342683566, 'hi': 0.545}
+saved /mnt/c/Users/Matt/Projects/WordSenseDisambiguation/Report/layer_study/results.json (127s)

@@ -699,6 +699,11 @@ throughout (see [B1](#b1)).
 
 ### 5.1 Fix, validate, re-run
 
+> **Update, 5 November 2026: implemented.** The JAX model, weight loading, data, prompts, extraction and
+> evaluation have all been rebuilt with these fixes, and each is covered by tests in `tests/`. See
+> [`Processing/Readme.md`](../Processing/Readme.md) for the new pipeline and [`LAYER_STUDY.md`](LAYER_STUDY.md)
+> for the re-run: which layers disambiguate best, chosen on dev documents and validated on held-out ones.
+
 In order:
 
 1. **Get activations from a validated implementation.** The cheapest route is HF `transformers` with hooks or

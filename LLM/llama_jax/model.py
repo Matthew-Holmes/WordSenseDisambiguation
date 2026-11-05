@@ -1,278 +1,338 @@
-from dataclasses import dataclass
-from typing import Optional, Tuple, Dict
+"""Functional Llama 3 in JAX.
+
+Validated against HuggingFace `transformers` (see tests/test_model_parity.py): with the same
+checkpoint and input tokens, every layer's hidden states agree to a centred cosine of >= 0.999
+and next-token predictions agree on >= 98% of positions in bfloat16.
+
+Two things callers must get right (both handled by `llama_jax.weights.load_params`):
+
+* **Weight layout.** `apply_rotary_emb` rotates *adjacent* dimension pairs (2i, 2i+1), as in
+  Meta's reference code, so `wq`/`wk` must be in Meta's layout (`consolidated.00.pth`). The
+  HuggingFace safetensors permute `wq`/`wk` for HF's rotate-half RoPE; feeding them in directly
+  scrambles the positional encoding. `load_params` un-permutes them.
+* **Inputs.** Start every sequence with `<|begin_of_text|>` (id 128000), right-pad, and pass a
+  key-padding mask built from the true lengths (`padding_mask`), never from token values
+  (id 0 is the token "!").
+
+Attention is causal by default, as in training. `hidden_states` returns the embeddings plus the
+residual stream after every block, in HuggingFace's convention (index 0 = embeddings,
+index k = output of block k).
+
+History: the March 2025 version had no causal mask, ran RMSNorm/softmax in bfloat16 with
+eps=1e-6, and used high_freq_factor=1 in the RoPE scaling. See Report/REPORT.md, bugs B2-B6.
+"""
+
+from __future__ import annotations
+
 import math
+from dataclasses import dataclass
+from typing import Dict, Optional
 
-import jax.numpy as jnp
 import jax
+import jax.numpy as jnp
 
-@dataclass
+BOS_ID = 128000
+PAD_ID = 128004  # <|finetune_right_pad_id|>; any id works because padding is masked by length
+
+
+@dataclass(frozen=True)
 class ModelArgs:
-    dim: int = 4096
-    n_layers: int = 32
+    """Architecture hyper-parameters (defaults: Llama-3.2-1B)."""
+
+    dim: int = 2048
+    n_layers: int = 16
     n_heads: int = 32
-    n_kv_heads: Optional[int] = None
-    vocab_size: int = -1
-    multiple_of: int = 256  # make SwiGLU hidden layer size multiple of large power of 2
+    n_kv_heads: int = 8
+    vocab_size: int = 128256
     norm_eps: float = 1e-5
-    rope_theta: float = 500000
+    rope_theta: float = 500000.0
     use_scaled_rope: bool = True
     rope_scale_factor: float = 32.0
+    rope_low_freq_factor: float = 1.0
+    rope_high_freq_factor: float = 4.0
+    rope_original_context: int = 8192
+    max_seq_len: int = 2048
 
-    max_batch_size: int = 32
-    original_rotary_embed_len: int = 2048
-    cache_len: int = 2048
-
-
-    def __init__(self, **kwargs):
-        for k, v in kwargs.items():
-            if hasattr(self, k):
-                setattr(self, k, v)
-
-        if self.n_kv_heads is None:
-            self.n_kv_heads = self.n_heads
-        assert self.n_kv_heads <= self.n_heads
+    def __post_init__(self):
         assert self.n_heads % self.n_kv_heads == 0
         assert self.dim % self.n_heads == 0
 
-def RMSNorm(x: jnp.array, w: jnp.array, eps: float = 1e-6) -> jnp.array:
+    @property
+    def head_dim(self) -> int:
+        return self.dim // self.n_heads
 
-    assert w.dtype == jnp.bfloat16, f"Expected weight to be bfloat16, but got {w.dtype}"
-    assert x.dtype == jnp.bfloat16, f"Expected x to be bfloat16, but got {x.dtype}"
+    @classmethod
+    def from_hf_config(cls, config: dict, max_seq_len: int = 2048) -> "ModelArgs":
+        """Build from a HuggingFace `config.json` dict."""
+        scaling = config.get("rope_scaling") or {}
+        return cls(
+            dim=config["hidden_size"],
+            n_layers=config["num_hidden_layers"],
+            n_heads=config["num_attention_heads"],
+            n_kv_heads=config.get("num_key_value_heads", config["num_attention_heads"]),
+            vocab_size=config["vocab_size"],
+            norm_eps=config.get("rms_norm_eps", 1e-5),
+            rope_theta=config.get("rope_theta", 500000.0),
+            use_scaled_rope=scaling.get("rope_type") == "llama3",
+            rope_scale_factor=scaling.get("factor", 32.0),
+            rope_low_freq_factor=scaling.get("low_freq_factor", 1.0),
+            rope_high_freq_factor=scaling.get("high_freq_factor", 4.0),
+            rope_original_context=scaling.get("original_max_position_embeddings", 8192),
+            max_seq_len=max_seq_len,
+        )
 
-    rms = jax.lax.rsqrt(jnp.mean(x**2, axis=-1, keepdims=True) + eps)
-    return (x * rms * w).astype(jnp.bfloat16)
+
+# ---------------------------------------------------------------------------
+# normalisation
+# ---------------------------------------------------------------------------
+def RMSNorm(x: jnp.ndarray, w: jnp.ndarray, eps: float = 1e-5) -> jnp.ndarray:
+    """RMSNorm computed in float32 and cast back to x.dtype before the weight, as in Meta's code."""
+    xf = x.astype(jnp.float32)
+    normed = xf * jax.lax.rsqrt(jnp.mean(xf * xf, axis=-1, keepdims=True) + eps)
+    return normed.astype(x.dtype) * w
 
 
+# ---------------------------------------------------------------------------
+# rotary position embeddings
+# ---------------------------------------------------------------------------
+def apply_scaling(
+    freqs: jnp.ndarray,
+    scale_factor: float = 32.0,
+    original: int = 8192,
+    low_freq_factor: float = 1.0,
+    high_freq_factor: float = 4.0,
+) -> jnp.ndarray:
+    """Llama 3 RoPE frequency scaling ("llama3" rope_type).
 
-def apply_scaling(freqs: jnp.ndarray, scale_factor: float, original: int) -> jnp.ndarray:
-    low_freq_factor = 1.0
-    high_freq_factor = 1.0
-    old_context_len = float(original)
-
-    low_freq_wavelen = old_context_len / low_freq_factor
-    high_freq_wavelen = old_context_len / high_freq_factor
-
+    Wavelengths shorter than original/high_freq_factor are kept, longer than
+    original/low_freq_factor are divided by scale_factor, and the band in between is
+    interpolated smoothly.
+    """
+    low_freq_wavelen = original / low_freq_factor
+    high_freq_wavelen = original / high_freq_factor
     wavelen = 2 * jnp.pi / freqs
-    new_freqs = jnp.where(wavelen > low_freq_wavelen, freqs / scale_factor, freqs)
-    smooth = (old_context_len / wavelen - low_freq_factor) / (high_freq_factor - low_freq_factor)
+    smooth = (original / wavelen - low_freq_factor) / (high_freq_factor - low_freq_factor)
+    smoothed = (1 - smooth) * freqs / scale_factor + smooth * freqs
     return jnp.where(
-        (wavelen >= high_freq_wavelen) & (wavelen <= low_freq_wavelen),
-        (1 - smooth) * new_freqs / scale_factor + smooth * new_freqs,
-        new_freqs
+        wavelen < high_freq_wavelen,
+        freqs,
+        jnp.where(wavelen > low_freq_wavelen, freqs / scale_factor, smoothed),
     )
 
-def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0,
-                             use_scaled: bool = False, scale_factor: float = 32.0, original: int = 8192):
-    dtype = jnp.float32
-    freqs = 1.0 / (theta ** (jnp.arange(0, dim, 2)[: (dim // 2)].astype(dtype) / dim))
-    t = jnp.arange(end, dtype=dtype)
-    
-    if use_scaled:
-        freqs = apply_scaling(freqs, scale_factor, original)
 
-    freqs = jnp.outer(t, freqs)
-    freq_cis = jnp.exp(1j * freqs)
-    return freq_cis
+def precompute_freqs_cis(
+    dim: int,
+    end: int,
+    theta: float = 500000.0,
+    use_scaled: bool = True,
+    scale_factor: float = 32.0,
+    original: int = 8192,
+    low_freq_factor: float = 1.0,
+    high_freq_factor: float = 4.0,
+) -> jnp.ndarray:
+    """Complex rotations exp(i * t * freq) for positions t < end; shape (end, dim // 2), complex64."""
+    freqs = 1.0 / (theta ** (jnp.arange(0, dim, 2)[: (dim // 2)].astype(jnp.float32) / dim))
+    if use_scaled:
+        freqs = apply_scaling(freqs, scale_factor, original, low_freq_factor, high_freq_factor)
+    t = jnp.arange(end, dtype=jnp.float32)
+    return jnp.exp(1j * jnp.outer(t, freqs)).astype(jnp.complex64)
+
+
+def freqs_cis_for(args: ModelArgs, end: Optional[int] = None) -> jnp.ndarray:
+    return precompute_freqs_cis(
+        args.head_dim,
+        end or args.max_seq_len,
+        args.rope_theta,
+        args.use_scaled_rope,
+        args.rope_scale_factor,
+        args.rope_original_context,
+        args.rope_low_freq_factor,
+        args.rope_high_freq_factor,
+    )
 
 
 def reshape_for_broadcast(freqs_cis: jnp.ndarray, x: jnp.ndarray) -> jnp.ndarray:
-    ndim = x.ndim
-    assert 0 <= 1 < ndim, f"Expected at least 2D x, got shape {x.shape}"
-    shape = [
-        (x.shape[i] if (i == 1 or i == ndim - 1) else 1)
-        for i in range(ndim)
-    ]
+    assert freqs_cis.shape == (x.shape[1], x.shape[-1]), (freqs_cis.shape, x.shape)
+    shape = [x.shape[i] if i in (1, x.ndim - 1) else 1 for i in range(x.ndim)]
     return jnp.reshape(freqs_cis, shape)
 
-def apply_rotary_emb(
-    xq: jnp.ndarray,
-    xk: jnp.ndarray,
-    freqs_cis: jnp.ndarray,
-) -> tuple[jnp.ndarray, jnp.ndarray]:
-    dtype = jnp.float32
 
-    xq_ = xq.astype(dtype)
-    hidden_q = xq_.shape[-1]
-    xq_reshaped = jnp.reshape(xq_, xq_.shape[:-1] + (hidden_q // 2, 2))
+def apply_rotary_emb(xq: jnp.ndarray, xk: jnp.ndarray, freqs_cis: jnp.ndarray) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Meta-style RoPE: rotate adjacent pairs (2i, 2i+1). Expects Meta-layout wq/wk (see module doc)."""
 
-    xk_ = xk.astype(dtype)
-    hidden_k = xk_.shape[-1]
-    xk_reshaped = jnp.reshape(xk_, xk_.shape[:-1] + (hidden_k // 2, 2))
+    def rotate(x):
+        xf = x.astype(jnp.float32).reshape(x.shape[:-1] + (x.shape[-1] // 2, 2))
+        xc = jax.lax.complex(xf[..., 0], xf[..., 1])
+        xr = xc * reshape_for_broadcast(freqs_cis, xc)
+        out = jnp.stack([jnp.real(xr), jnp.imag(xr)], axis=-1).reshape(x.shape)
+        return out.astype(x.dtype)
 
-    # complex from (real, imag)
-    xq_real = xq_reshaped[..., 0]
-    xq_imag = xq_reshaped[..., 1]
-    xk_real = xk_reshaped[..., 0]
-    xk_imag = xk_reshaped[..., 1]
-
-    xq_complex = xq_real + 1j * xq_imag
-    xk_complex = xk_real + 1j * xk_imag
-
-    freqs_cis_brd = reshape_for_broadcast(freqs_cis, xq_complex)
-
-    xq_mul = xq_complex * freqs_cis_brd
-    xk_mul = xk_complex * freqs_cis_brd
-
-    def view_as_real(z: jnp.ndarray) -> jnp.ndarray:
-        return jnp.stack([jnp.real(z), jnp.imag(z)], axis=-1)
-
-    xq_realimag = view_as_real(xq_mul)  # shape (..., 2)
-    xk_realimag = view_as_real(xk_mul)  # shape (..., 2)
-
-    # Flatten(3) => flatten the last two dimensions into one, 
-    # e.g. if shape is [b, t, h, 2], flatten from dim=3 => [b, t, h * 2]
-    # We'll do that by '... + (-1,)', effectively combining the last 2 dims.
-    xq_out = jnp.reshape(xq_realimag, xq_realimag.shape[:3] + (-1,))
-    xk_out = jnp.reshape(xk_realimag, xk_realimag.shape[:3] + (-1,))
-
-    # back to original dtype
-    xq_out = xq_out.astype(xq.dtype)
-    xk_out = xk_out.astype(xk.dtype)
-
-    return xq_out, xk_out
+    return rotate(xq), rotate(xk)
 
 
-def repeat_kv(x: jnp.array, n_rep: int) -> jnp.array:
+def repeat_kv(x: jnp.ndarray, n_rep: int) -> jnp.ndarray:
     bs, slen, n_kv_heads, head_dim = x.shape
     if n_rep == 1:
         return x
-    return jnp.reshape(
-        jnp.tile(x[:, :, :, None, :], (1, 1, 1, n_rep, 1)), 
-        (bs, slen, n_kv_heads * n_rep, head_dim)
+    return jnp.broadcast_to(x[:, :, :, None, :], (bs, slen, n_kv_heads, n_rep, head_dim)).reshape(
+        bs, slen, n_kv_heads * n_rep, head_dim
     )
 
 
-def attention_block(x: jnp.array, mask: Optional[jnp.array], freqs_cis: jnp.array,
-                    wq: jnp.array, wk: jnp.array, wv: jnp.array,
-                    wo: jnp.array,
-                    n_heads: int, n_kv_heads: int) -> jnp.array:
-    
-    assert x.dtype == jnp.bfloat16, f"Expected x to be bfloat16, but got {x.dtype}"
-    
-    bs, seqlen, model_dim = x.shape
+# ---------------------------------------------------------------------------
+# masks
+# ---------------------------------------------------------------------------
+def padding_mask(lengths: jnp.ndarray, seqlen: int) -> jnp.ndarray:
+    """Additive key-padding mask (bs, seqlen): 0 for real tokens, -inf for right-padding."""
+    positions = jnp.arange(seqlen)[None, :]
+    return jnp.where(positions < lengths[:, None], 0.0, -jnp.inf).astype(jnp.float32)
 
-    head_dim         = model_dim // n_heads
-    n_local_heads    = n_heads
-    n_local_kv_heads = n_kv_heads
-    n_rep            = n_local_heads // n_local_kv_heads
 
-    xq = jnp.dot(x, wq.T).reshape(bs, seqlen, n_local_heads,    head_dim)
-    xk = jnp.dot(x, wk.T).reshape(bs, seqlen, n_local_kv_heads, head_dim)
-    xv = jnp.dot(x, wv.T).reshape(bs, seqlen, n_local_kv_heads, head_dim)
+def causal_mask(seqlen: int) -> jnp.ndarray:
+    """Additive causal mask (seqlen, seqlen): -inf above the diagonal."""
+    return jnp.triu(jnp.full((seqlen, seqlen), -jnp.inf, dtype=jnp.float32), k=1)
 
-    xq, xk = apply_rotary_emb(xq, xk, freqs_cis)
 
-    keys   = repeat_kv(xk, n_rep)
-    values = repeat_kv(xv, n_rep)
-
-    xq     = jnp.transpose(xq,     (0, 2, 1, 3))  # (bs, n_local_heads, seqlen, head_dim)
-    keys   = jnp.transpose(keys,   (0, 2, 1, 3))  # (bs, n_local_heads, seqlen, head_dim)
-    values = jnp.transpose(values, (0, 2, 1, 3))  # (bs, n_local_heads, seqlen, head_dim)
-
-    # here is where we compute the cross-attention
-    scores = jnp.matmul(xq, jnp.transpose(keys, (0, 1, 3, 2))) / math.sqrt(head_dim) #(bs, n_local_heads, seqlen, seqlen)
-
+def _attention_bias(mask: Optional[jnp.ndarray], seqlen: int, causal: bool) -> Optional[jnp.ndarray]:
+    """Combine a key-padding mask (bs, T) or a full additive mask (bs|1, 1, T, T) with the causal mask."""
+    bias = None
     if mask is not None:
-        # scores_unmasked = scores 
-        scores += mask[:, None, None, :]   # mask should contain -inf for positions to ignore
+        mask = mask.astype(jnp.float32)
+        bias = mask[:, None, None, :] if mask.ndim == 2 else mask
+    if causal:
+        c = causal_mask(seqlen)[None, None]
+        bias = c if bias is None else bias + c
+    return bias
 
-        # print("Attention Scores Before Masking (Batch 0, Head 0):", scores_unmasked[0, 0])
-        # print("Mask (Batch 0):", mask[0])  # Verify actual mask values
-        # print("Attention Scores After Masking (Batch 0, Head 0):", scores[0, 0])
 
-    scores = jax.nn.softmax(scores, axis=-1)
-    # print("Softmaxed Attention Scores (Batch 0, Head 0):", scores[0, 0])
+# ---------------------------------------------------------------------------
+# blocks
+# ---------------------------------------------------------------------------
+def attention_block(
+    x: jnp.ndarray,
+    mask: Optional[jnp.ndarray],
+    freqs_cis: jnp.ndarray,
+    wq: jnp.ndarray,
+    wk: jnp.ndarray,
+    wv: jnp.ndarray,
+    wo: jnp.ndarray,
+    n_heads: int,
+    n_kv_heads: int,
+    causal: bool = True,
+) -> jnp.ndarray:
+    """Grouped-query self-attention.
 
-    # sum_probs = scores.sum(axis=-1)
-    # print("Sum of softmax probabilities (should be 1 for unmasked tokens):", sum_probs[0])
+    `mask` may be None, an additive key-padding mask of shape (bs, seqlen) as returned by
+    `padding_mask`, or a full additive mask of shape (bs or 1, 1, seqlen, seqlen). A causal
+    mask is added unless causal=False. Scores and softmax are computed in float32.
+    """
+    bs, seqlen, model_dim = x.shape
+    head_dim = model_dim // n_heads
+    n_rep = n_heads // n_kv_heads
 
-    output = jnp.matmul(scores, values)
+    xq = jnp.dot(x, wq.T).reshape(bs, seqlen, n_heads, head_dim)
+    xk = jnp.dot(x, wk.T).reshape(bs, seqlen, n_kv_heads, head_dim)
+    xv = jnp.dot(x, wv.T).reshape(bs, seqlen, n_kv_heads, head_dim)
+    xq, xk = apply_rotary_emb(xq, xk, freqs_cis[:seqlen])
+
+    keys = repeat_kv(xk, n_rep)
+    values = repeat_kv(xv, n_rep)
+    xq = jnp.transpose(xq, (0, 2, 1, 3))
+    keys = jnp.transpose(keys, (0, 2, 1, 3))
+    values = jnp.transpose(values, (0, 2, 1, 3))
+
+    scores = jnp.matmul(xq, jnp.transpose(keys, (0, 1, 3, 2)), preferred_element_type=jnp.float32)
+    scores = scores / math.sqrt(head_dim)
+    bias = _attention_bias(mask, seqlen, causal)
+    if bias is not None:
+        scores = scores + bias
+    probs = jax.nn.softmax(scores, axis=-1).astype(x.dtype)
+
+    output = jnp.matmul(probs, values)
     output = jnp.transpose(output, (0, 2, 1, 3)).reshape(bs, seqlen, -1)
-    output = jnp.dot(output, wo.T)
-
-    return output.astype(jnp.bfloat16)
+    return jnp.dot(output, wo.T).astype(x.dtype)
 
 
-def feed_forward(x: jnp.array,
-                 gate: jnp.array, down: jnp.array, up: jnp.array) -> jnp.array:
-        
-    assert x.dtype == jnp.bfloat16, f"Expected x to be bfloat16, but got {x.dtype}"
-
+def feed_forward(x: jnp.ndarray, gate: jnp.ndarray, down: jnp.ndarray, up: jnp.ndarray) -> jnp.ndarray:
+    """SwiGLU MLP: down(silu(gate(x)) * up(x))."""
     return jnp.dot(jax.nn.silu(jnp.dot(x, gate.T)) * jnp.dot(x, up.T), down.T)
-                
-    
-def transformer_block(x: jnp.ndarray,
-                      params: Dict, 
-                      mask: Optional[jnp.ndarray], 
-                      freqs_cis: jnp.ndarray,
-                      n_heads: int, n_kv_heads: int):
-    
-    assert x.dtype == jnp.bfloat16, f"Expected x to be bfloat16, but got {x.dtype}"
 
-    # expects a params pytree
-    attn_params = params["attention"]
-    ff_params   = params["feed_forward"]
-    norms       = params["norms"]
 
-    x_norm = RMSNorm(x, norms["pre_attention_rms"])
-
-    attn_out = attention_block(
-        x_norm, mask, freqs_cis,
-        attn_params["wq"], attn_params["wk"], attn_params["wv"], attn_params["wo"],
-        n_heads, n_kv_heads
+def transformer_block(
+    x: jnp.ndarray,
+    params: Dict,
+    mask: Optional[jnp.ndarray],
+    freqs_cis: jnp.ndarray,
+    n_heads: int,
+    n_kv_heads: int,
+    causal: bool = True,
+    eps: float = 1e-5,
+) -> jnp.ndarray:
+    attn, ff, norms = params["attention"], params["feed_forward"], params["norms"]
+    h = x + attention_block(
+        RMSNorm(x, norms["pre_attention_rms"], eps), mask, freqs_cis,
+        attn["wq"], attn["wk"], attn["wv"], attn["wo"], n_heads, n_kv_heads, causal,
     )
-    x = x + attn_out # residual
-    x_norm = RMSNorm(x, norms["post_attention_rms"])
-
-    ff_out = feed_forward(x_norm,
-        ff_params["gate"], ff_params["down"], ff_params["up"])
-    x = x + ff_out   # another residual
-
-    return x
+    return h + feed_forward(RMSNorm(h, norms["post_attention_rms"], eps), ff["gate"], ff["down"], ff["up"])
 
 
-def transformer(tokens: jnp.ndarray,
-                params: Dict,
-                mask: Optional[jnp.ndarray], 
-                n_heads: int, n_kv_heads: int):
-
-    # bsz, seqlen = tokens.shape
-    # use tokens as indices in the embedding matrix
-    h = params["tok_embeddings"][tokens]  # (bsz, seqlen, dim)
-
-    assert h.dtype == jnp.bfloat16, f"Expected h to be bfloat16, but got {h.dtype}"
-
-    freqs_cis = params["freqs_cis"]
-
+# ---------------------------------------------------------------------------
+# whole model
+# ---------------------------------------------------------------------------
+def hidden_states(
+    tokens: jnp.ndarray,
+    params: Dict,
+    mask: Optional[jnp.ndarray],
+    n_heads: int,
+    n_kv_heads: int,
+    causal: bool = True,
+    eps: float = 1e-5,
+) -> jnp.ndarray:
+    """Residual stream, HuggingFace convention: (bs, n_layers + 1, seqlen, dim), index 0 = embeddings."""
+    seqlen = tokens.shape[1]
+    freqs_cis = params["freqs_cis"][:seqlen]
+    h = params["tok_embeddings"][tokens]
+    states = [h]
     for layer_params in params["layers"]:
-        h = transformer_block(h, layer_params, mask, freqs_cis, n_heads, n_kv_heads)
-
-    h = RMSNorm(h, params["norm_scale"])
-
-    # project to vocabulary logits
-    output = jnp.dot(h, params["output_weight"].T)
-
-    return output
+        h = transformer_block(h, layer_params, mask, freqs_cis, n_heads, n_kv_heads, causal, eps)
+        states.append(h)
+    return jnp.stack(states, axis=1)
 
 
-def reporting_transformer(tokens: jnp.ndarray,
-                          params: Dict,
-                          mask: Optional[jnp.ndarray], 
-                          n_heads: int, n_kv_heads: int):
-                          
+def reporting_transformer(
+    tokens: jnp.ndarray,
+    params: Dict,
+    mask: Optional[jnp.ndarray],
+    n_heads: int,
+    n_kv_heads: int,
+    causal: bool = True,
+    eps: float = 1e-5,
+) -> jnp.ndarray:
+    """Residual stream after each block: (bs, n_layers, seqlen, dim). Kept for the original API."""
+    return hidden_states(tokens, params, mask, n_heads, n_kv_heads, causal, eps)[:, 1:]
 
-    # bsz, seqlen = tokens.shape
-    # use tokens as indices in the embedding matrix
-    h = params["tok_embeddings"][tokens]  # (bsz, seqlen, dim)
 
-    assert h.dtype == jnp.bfloat16, f"Expected h to be bfloat16, but got {h.dtype}"
-
-    freqs_cis = params["freqs_cis"]
-
-    acts = []
+def transformer(
+    tokens: jnp.ndarray,
+    params: Dict,
+    mask: Optional[jnp.ndarray],
+    n_heads: int,
+    n_kv_heads: int,
+    causal: bool = True,
+    eps: float = 1e-5,
+) -> jnp.ndarray:
+    """Next-token logits (bs, seqlen, vocab) in float32."""
+    seqlen = tokens.shape[1]
+    freqs_cis = params["freqs_cis"][:seqlen]
+    h = params["tok_embeddings"][tokens]
     for layer_params in params["layers"]:
-        h = transformer_block(h, layer_params, mask, freqs_cis, n_heads, n_kv_heads)
-        acts.append(h)
+        h = transformer_block(h, layer_params, mask, freqs_cis, n_heads, n_kv_heads, causal, eps)
+    h = RMSNorm(h, params["norm_scale"], eps)
+    return jnp.dot(h, params["output_weight"].T, preferred_element_type=jnp.float32)
 
-    return jnp.stack(acts, axis=1)  # (batch, layers, seq_len, hidden_dim)
 
+# jit-ready versions (the integer and flag arguments must be static)
+STATIC_ARGS = ("n_heads", "n_kv_heads", "causal", "eps")
+hidden_states_jit = jax.jit(hidden_states, static_argnames=STATIC_ARGS)
+reporting_transformer_jit = jax.jit(reporting_transformer, static_argnames=STATIC_ARGS)
+transformer_jit = jax.jit(transformer, static_argnames=STATIC_ARGS)
