@@ -14,9 +14,16 @@ Run from the repository root (in WSL, with the project venv):
     python -m Processing.script estimate --samples dev_natural_80 test_balanced_200
     python -m Processing.script extract  --samples dev_natural_80 test_balanced_200
 
+    # 4. optional: swapped sentences (target replaced by a random word of the same POS; Processing/swaps.py).
+    #    Each spec is MATCH:DRAWS with MATCH = pos | pos+form and DRAWS = 0, 1 or a range such as 0-2;
+    #    specs run in the order given, so the first one finishes first.
+    python -m Processing.script extract --samples dev_natural_80 --swaps pos:0 pos+form:0 pos:1
+
 Vectors land in Data/Processed/v2/activations/{sentences,glosses}/ (see Processing/extract.py), keyed by
 instance id (variants plain_last, echo_last, echo_mean) and by "lemma|synset" (variants mean, last).
-Each is a (17, 2048) float16 array: index 0 = embeddings, index k = output of block k.
+Swapped-sentence vectors land in activations/swapped_seed<S>/, keyed by Processing.swaps.swap_key, with the
+swapped texts in plan.json beside them. Each is a (17, 2048) float16 array: index 0 = embeddings, index k =
+output of block k.
 
 This replaces the March 2025 chunk script; the fixes are listed in Report/REPORT.md (B1-B16).
 """
@@ -105,7 +112,53 @@ def open_stores(root: Path = ACTIVATIONS_DIR):
             VectorStore(root / "glosses", GLOSS_VARIANTS, STORE_META))
 
 
-def estimate(ds, tok, instance_ids: list[str], root: Path = ACTIVATIONS_DIR) -> dict:
+SWAP_SEED = 0
+
+
+def parse_swap_specs(specs: list[str]) -> list[tuple[str, int]]:
+    """'pos:0', 'pos+form:0-2' -> [(match, draw), ...] in the order given."""
+    from Processing.swaps import MATCH_MODES
+
+    out = []
+    for spec in specs:
+        match, _, draws = spec.rpartition(":")
+        if match not in MATCH_MODES or not draws:
+            raise ValueError(f"bad swap spec {spec!r}: expected MATCH:DRAWS with MATCH in {MATCH_MODES}")
+        first, _, last = draws.partition("-")
+        out += [(match, j) for j in range(int(first), int(last or first) + 1)]
+    return list(dict.fromkeys(out))
+
+
+def open_swap_store(root: Path = ACTIVATIONS_DIR, seed: int = SWAP_SEED):
+    from Processing.extract import SENTENCE_VARIANTS, VectorStore
+    from Processing.swaps import POOL_VERSION
+
+    meta = {**STORE_META, "swap_pool_version": POOL_VERSION, "swap_seed": seed}
+    return VectorStore(root / f"swapped_seed{seed}", SENTENCE_VARIANTS, meta)
+
+
+def swap_plans(ds, instance_ids: list[str], specs: list[tuple[str, int]], seed: int = SWAP_SEED):
+    """[((match, draw), [Swap, ...]), ...] in spec order (see Processing/swaps.py)."""
+    from Processing.swaps import build_pool, plan_swaps
+
+    pool = build_pool(ds.instances.values())
+    return [((m, j), plan_swaps(ds, instance_ids, draws=(j,), seed=seed, match=m, pool=pool)) for m, j in specs]
+
+
+def _swap_todo(ds, tok, instance_ids, specs, root, seed, save: bool):
+    from Processing.swaps import save_plan, swap_inputs
+
+    store = open_swap_store(root, seed)
+    todo = []
+    for spec, plan in swap_plans(ds, instance_ids, specs, seed):
+        if save:
+            save_plan(store.root / "plan.json", plan)
+        todo.append((spec, [x for x in swap_inputs(tok, plan) if x.sentence_id not in store]))
+    return store, todo
+
+
+def estimate(ds, tok, instance_ids: list[str], root: Path = ACTIVATIONS_DIR, swaps: list[tuple[str, int]] = (),
+             swap_seed: int = SWAP_SEED) -> dict:
     """Token counts still to be computed (padding included) and a runtime estimate."""
     from Processing.extract import Extractor
 
@@ -113,19 +166,24 @@ def estimate(ds, tok, instance_ids: list[str], root: Path = ACTIVATIONS_DIR) -> 
     sent_store, gloss_store = open_stores(root)
     todo_s = [s for s in sentences if any(t not in sent_store for t in s.targets)]
     todo_g = [g for g in glosses if g.key not in gloss_store]
+    todo_w = [x for _, xs in _swap_todo(ds, tok, instance_ids, swaps, root, swap_seed, save=False)[1] for x in xs] \
+        if swaps else []
 
     def padded(seqs):
         ex = Extractor(params=None, args=None)
         return sum(max(1, ex.tokens_per_batch // T) * T for T, _ in ex.batches([len(s) for s in seqs]))
 
     s_tok, g_tok = padded([s.token_ids for s in todo_s]), padded([g.token_ids for g in todo_g])
+    w_tok = padded([x.token_ids for x in todo_w])
+    total = s_tok + g_tok + w_tok
     return {"instances": len(instance_ids), "sentences_to_run": len(todo_s), "glosses_to_run": len(todo_g),
-            "padded_tokens": s_tok + g_tok, "estimated_minutes": round((s_tok + g_tok) / TOKENS_PER_SECOND / 60, 1)}
+            "swapped_sentences_to_run": len(todo_w), "padded_tokens": total,
+            "estimated_minutes": round(total / TOKENS_PER_SECOND / 60, 1)}
 
 
 def extract(ds, tok, instance_ids: list[str], weights: Path = DEFAULT_WEIGHTS, root: Path = ACTIVATIONS_DIR,
-            dtype: str = "float32", log=print) -> dict:
-    """Compute and cache all vectors needed for `instance_ids`. Returns timing stats."""
+            dtype: str = "float32", log=print, swaps: list[tuple[str, int]] = (), swap_seed: int = SWAP_SEED) -> dict:
+    """Compute and cache all vectors needed for `instance_ids` (and their swapped sentences). Returns timing stats."""
     import jax.numpy as jnp
 
     from LLM.llama_jax.weights import load_params
@@ -133,9 +191,10 @@ def extract(ds, tok, instance_ids: list[str], weights: Path = DEFAULT_WEIGHTS, r
 
     sentences, glosses = build_inputs(ds, tok, instance_ids)
     sent_store, gloss_store = open_stores(root)
-    if not any(any(t not in sent_store for t in s.targets) for s in sentences) and not gloss_store.missing(
-        g.key for g in glosses
-    ):
+    swap_store, swap_todo = _swap_todo(ds, tok, instance_ids, swaps, root, swap_seed, save=True) if swaps \
+        else (None, [])
+    if (not any(any(t not in sent_store for t in s.targets) for s in sentences)
+            and not gloss_store.missing(g.key for g in glosses) and not any(xs for _, xs in swap_todo)):
         log("everything already cached")
         return {}
     with warnings.catch_warnings():
@@ -144,6 +203,10 @@ def extract(ds, tok, instance_ids: list[str], weights: Path = DEFAULT_WEIGHTS, r
     ex = Extractor(params, args, log=log)
     extract_sentences(ex, sentences, sent_store)
     extract_glosses(ex, glosses, gloss_store)
+    for (match, draw), inputs in swap_todo:
+        log(f"swapped sentences, match={match} draw={draw}: {len(inputs)} to run")
+        extract_sentences(ex, inputs, swap_store)
+        log(f"swapped sentences, match={match} draw={draw}: done ({json.dumps(ex.stats)})")
     return ex.stats
 
 
@@ -163,6 +226,9 @@ def main() -> None:
         p = sub.add_parser(name)
         p.add_argument("--samples", nargs="+", required=True, help="sample names in Data/Processed/v2/samples")
         p.add_argument("--tokenizer", default=str(DEFAULT_TOKENIZER))
+        p.add_argument("--swaps", nargs="*", default=[],
+                       help="swapped sentences to add, e.g. pos:0 pos+form:0 pos:1-2 (see Processing/swaps.py)")
+        p.add_argument("--swap-seed", type=int, default=SWAP_SEED)
         if name == "extract":
             p.add_argument("--weights", default=str(DEFAULT_WEIGHTS))
             p.add_argument("--dtype", choices=["float32", "bfloat16"], default="float32")
@@ -175,10 +241,12 @@ def main() -> None:
         return
     tok = load_tokenizer(a.tokenizer)
     ids = list(dict.fromkeys(i for name in a.samples for i in load_sample(name)["instance_ids"]))
+    specs = parse_swap_specs(a.swaps)
     if a.cmd == "estimate":
-        print(json.dumps(estimate(ds, tok, ids), indent=1))
+        print(json.dumps(estimate(ds, tok, ids, swaps=specs, swap_seed=a.swap_seed), indent=1))
     else:
-        print(json.dumps(extract(ds, tok, ids, Path(a.weights), dtype=a.dtype), indent=1))
+        print(json.dumps(extract(ds, tok, ids, Path(a.weights), dtype=a.dtype, swaps=specs, swap_seed=a.swap_seed),
+                         indent=1), flush=True)
 
 
 # ---------------------------------------------------------------------------

@@ -12,8 +12,16 @@ covered by tests in `tests/`.
 | `prompts.py` | Builds the inputs. Sentences use the `[BOS] text text` "echo" form. Definitions use `[BOS] lemma: gloss`. Targets are located by character offsets. |
 | `extract.py` | Runs batched JAX forward passes (float32 on CPU) and stores the pooled vectors as float16 arrays. The store is resumable. |
 | `evaluation.py` | Metrics with random tie-breaking, sentence-clustered bootstrap CIs, baselines and dev-only selection. |
-| `script.py` | Command-line interface with three commands: `sample`, `estimate` and `extract`. |
-| `run_script.bash` | Runs the whole workflow end to end, including `Analysis/layer_study.py`. |
+| `swaps.py` | Builds "swapped" sentences, with the target replaced by a random dataset word of the same part of speech. It can also match the inflection. Draws are seeded per target. |
+| `contrastive.py` | Scores a target against glosses by contrasting the original and swapped runs (three methods). Worked examples are in `Analysis/swap_methods.ipynb`. |
+| `script.py` | Command-line interface with three commands: `sample`, `estimate` and `extract`. `--swaps` adds swapped sentences. |
+| `run_script.bash` | Runs the whole workflow end to end, including `Analysis/layer_study.py` and `Analysis/swap_study.py`. |
+
+Swapped sentences are extracted with, for example,
+`extract --samples dev_natural_80 --swaps pos:0 pos+form:0 pos:1`. Each spec is `MATCH:DRAWS`. The vectors go
+to `Data/Processed/v2/activations/swapped_seed0/`, and `plan.json` beside them records every swapped sentence.
+One draw costs about as much as extracting the original sentences again, roughly 45 minutes for the four study
+samples.
 
 The model code is `LLM/llama_jax/model.py`, which is now fixed: it has a causal mask, the correct RoPE scaling,
 and float32 norms and softmax. Load weights with `LLM/llama_jax/weights.py::load_params`. It accepts the

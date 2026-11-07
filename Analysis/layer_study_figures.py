@@ -59,17 +59,18 @@ def frame(title, subtitle, ylabel, ylim, xmax=16, right=0.80):
     return fig, ax
 
 
-def lines(ax, series, refs=(), x_end=16):
+def lines(ax, series, refs=(), x_end=16, colors=None):
     """Series with markers, a one-row legend above the plot, and direct end labels.
 
     `refs` are (y, text) reference lines (e.g. chance), drawn in muted ink. All end labels, series and
-    reference alike, are laid out together so they never overlap.
+    reference alike, are laid out together so they never overlap. `colors` defaults to the categorical
+    slots in order.
     """
     labels = []
     for y, text in refs:
         ax.axhline(y, color=MUTED, linewidth=0.9, zorder=2)
         labels.append([y, text, None])
-    for (label, short, ys), color in zip(series, SERIES):
+    for (label, short, ys), color in zip(series, colors or SERIES):
         ax.plot(range(len(ys)), ys, color=color, linewidth=1.6, marker="o", markersize=4.2,
                 markeredgecolor=SURFACE, markeredgewidth=1.0, label=label, zorder=3)
         labels.append([ys[-1], short, color])

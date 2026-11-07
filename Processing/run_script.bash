@@ -21,3 +21,10 @@ $PY -u -m Processing.script extract --samples $SAMPLES
 # 3. layer study: choose on dev, validate on test, then draw the figures
 $PY Analysis/layer_study.py
 $PY Analysis/layer_study_figures.py
+
+# 4. swap study: re-run each sentence with the target replaced by a random word of the same POS
+#    (pos:0 = the design as specified; pos+form:0 = inflection-matched; pos:1 = a second random draw)
+$PY -m Processing.script estimate --samples $SAMPLES --swaps pos:0 pos+form:0 pos:1
+$PY -u -m Processing.script extract --samples $SAMPLES --swaps pos:0 pos+form:0 pos:1
+$PY Analysis/swap_study.py
+$PY Analysis/swap_study_figures.py
