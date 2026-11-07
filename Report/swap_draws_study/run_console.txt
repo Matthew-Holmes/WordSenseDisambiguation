@@ -1,0 +1,11 @@
+loaded (119s)
+scored 31 subsets of draws (164s)
+K=1: baseline 0.460  diff 0.443 (-0.018, p=0.471)  normdiff 0.448 (-0.013, p=0.599)  scorediff 0.448 (-0.013, p=0.599)  swap 0.312
+K=2: baseline 0.460  diff 0.450 (-0.010, p=0.664)  normdiff 0.440 (-0.020, p=0.391)  scorediff 0.440 (-0.020, p=0.391)  swap 0.320
+K=3: baseline 0.460  diff 0.470 (+0.010, p=0.660)  normdiff 0.468 (+0.007, p=0.757)  scorediff 0.468 (+0.007, p=0.757)  swap 0.318
+K=4: baseline 0.460  diff 0.468 (+0.007, p=0.739)  normdiff 0.463 (+0.003, p=0.946)  scorediff 0.460 (+0.000, p=1.000)  swap 0.340
+K=5: baseline 0.460  diff 0.453 (-0.007, p=0.757)  normdiff 0.450 (-0.010, p=0.684)  scorediff 0.450 (-0.010, p=0.684)  swap 0.350
+  K=5 own selection diff      echo_mean+mean/L6-8    dev 0.470 test 0.490 (baseline echo_mean+mean/L6-8 test 0.465)
+  K=5 own selection normdiff  plain_last+mean/L8-11  dev 0.465 test 0.445 (baseline echo_mean+mean/L6-8 test 0.465)
+  K=5 own selection scorediff echo_mean+mean/L6-8    dev 0.465 test 0.485 (baseline echo_mean+mean/L6-8 test 0.465)
+saved /mnt/c/Users/Matt/Projects/WordSenseDisambiguation/Report/swap_draws_study/results.json (198s)

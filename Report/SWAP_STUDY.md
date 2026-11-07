@@ -416,7 +416,9 @@ marking (tense, agreement), but they don't.
    frequency gap directly.
 4. **If you want to give the swap hypothesis a fuller test,** build on the two things that narrowed the gap here:
    matched inflection and averaging. Use replacements that match the target's inflection and frequency band, with
-   5–10 draws per target. Each draw costs 40–50 minutes on this CPU for the four samples.
+   5–10 draws per target. Each draw costs 40–50 minutes on this CPU for the four samples. **Since tried** with five
+   POS-matched draws on the sense-balanced samples: averaging brings the contrasts level with the baseline, but
+   not above it. See [`SWAP_DRAWS_STUDY.md`](SWAP_DRAWS_STUDY.md).
 
 ## 4. Reproducing
 

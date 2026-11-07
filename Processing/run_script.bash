@@ -32,3 +32,12 @@ $PY Analysis/swap_study_figures.py
 # 5. gloss-mean study: remove the mean of each target's candidate gloss vectors (no new extraction)
 $PY Analysis/gloss_mean_study.py
 $PY Analysis/gloss_mean_study_figures.py
+
+# 6. swap-draws study: up to 5 POS-matched swaps per target, averaged (sense-balanced samples only)
+$PY -u -m Processing.script extract --samples dev_balanced_200 test_balanced_200 --swaps pos:2-4
+$PY Analysis/swap_draws_study.py
+$PY Analysis/swap_draws_figures.py
+
+# 7. metrics study: other similarity metrics and cheap post-processing, judged on sense-balanced data
+$PY -u Analysis/metrics_study.py
+$PY Analysis/metrics_study_figures.py

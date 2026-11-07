@@ -1,0 +1,46 @@
+loaded and fitted (1103s): 2687 glosses, reference 1999 glosses and 411 targets
+  scored transform 'none' (1143s)
+  scored transform 'pearson' (1150s)
+  scored transform 'spearman' (1211s)
+  scored transform 'standardise' (1250s)
+  scored transform 'whiten' (1273s)
+  scored transform 'abtt1' (1286s)
+  scored transform 'abtt3' (1299s)
+  scored transform 'abtt10' (1313s)
+  scored transform 'abtt30' (1331s)
+checks: {'max_abs_cosine_vs_layer_scores': 3.5762786865234375e-07, 'max_abs_pearson_vs_direct': 0.0, 'max_abs_spearman_vs_direct': 0.0}
+cosine at echo_last+mean/L5-7: pooled 0.460 dev_balanced 0.445 test_balanced 0.475
+  euclidean            pooled 0.415  diff -0.045 [-0.098,+0.005] p=0.086 holm=1.000
+  manhattan            pooled 0.415  diff -0.045 [-0.098,+0.008] p=0.103 holm=1.000
+  pearson              pooled 0.460  diff +0.000 [-0.007,+0.007] p=1.000 holm=1.000
+  spearman             pooled 0.475  diff +0.015 [-0.013,+0.043] p=0.341 holm=1.000
+  dot                  pooled 0.445  diff -0.015 [-0.048,+0.015] p=0.400 holm=1.000
+  standardise          pooled 0.497  diff +0.037 [+0.005,+0.072] p=0.034 holm=0.442
+  abtt10               pooled 0.443  diff -0.018 [-0.053,+0.020] p=0.391 holm=1.000
+  whiten               pooled 0.450  diff -0.010 [-0.052,+0.032] p=0.718 holm=1.000
+  csls10               pooled 0.475  diff +0.015 [-0.012,+0.040] p=0.300 holm=1.000
+  gloss_z              pooled 0.468  diff +0.007 [-0.025,+0.038] p=0.688 holm=1.000
+  layer_z              pooled 0.455  diff -0.005 [-0.020,+0.010] p=0.621 holm=1.000
+  ensemble             pooled 0.430  diff -0.030 [-0.070,+0.008] p=0.159 holm=1.000
+  standardise+gloss_z  pooled 0.480  diff +0.020 [-0.018,+0.058] p=0.328 holm=1.000
+  abtt1                pooled 0.465  diff +0.005 [-0.025,+0.037] p=0.820
+  abtt3                pooled 0.455  diff -0.005 [-0.040,+0.030] p=0.846
+  abtt30               pooled 0.440  diff -0.020 [-0.058,+0.020] p=0.350
+  csls5                pooled 0.480  diff +0.020 [-0.007,+0.045] p=0.176
+  csls50               pooled 0.460  diff +0.000 [-0.020,+0.020] p=1.000
+  gloss_center         pooled 0.460  diff +0.000 [-0.015,+0.013] p=1.000
+own selection: cosine echo_mean+mean/L6-8 dev 0.480 test 0.465
+  euclidean            echo_last+mean/L5      dev 0.435 test 0.430 diff -0.035 p=0.399
+  manhattan            echo_last+mean/L5      dev 0.440 test 0.430 diff -0.035 p=0.401
+  pearson              echo_mean+mean/L6-8    dev 0.480 test 0.465 diff +0.000 p=1.000
+  spearman             echo_mean+mean/L5-8    dev 0.485 test 0.460 diff -0.005 p=0.895
+  dot                  echo_last+mean/L4-7    dev 0.455 test 0.440 diff -0.025 p=0.394
+  standardise          echo_mean+mean/L6-7    dev 0.490 test 0.470 diff +0.005 p=0.950
+  abtt10               echo_last+mean/L5      dev 0.450 test 0.450 diff -0.015 p=0.724
+  whiten               echo_last+mean/L11     dev 0.470 test 0.420 diff -0.045 p=0.198
+  csls10               echo_mean+mean/L7      dev 0.485 test 0.465 diff +0.000 p=1.000
+  gloss_z              echo_mean+mean/L7      dev 0.475 test 0.475 diff +0.010 p=0.782
+  layer_z              echo_mean+mean/L7      dev 0.470 test 0.460 diff -0.005 p=0.931
+  ensemble             all+all/L8             dev 0.425 test 0.440 diff -0.025 p=0.491
+  standardise+gloss_z  echo_last+mean/L10     dev 0.490 test 0.480 diff +0.015 p=0.729
+saved /mnt/c/Users/Matt/Projects/WordSenseDisambiguation/Report/metrics_study/results.json (1569s)
