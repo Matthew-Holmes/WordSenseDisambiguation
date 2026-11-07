@@ -14,8 +14,9 @@ covered by tests in `tests/`.
 | `evaluation.py` | Metrics with random tie-breaking, sentence-clustered bootstrap CIs, baselines and dev-only selection. |
 | `swaps.py` | Builds "swapped" sentences, with the target replaced by a random dataset word of the same part of speech. It can also match the inflection. Draws are seeded per target. |
 | `contrastive.py` | Scores a target against glosses by contrasting the original and swapped runs (three methods). Worked examples are in `Analysis/swap_methods.ipynb`. |
+| `gloss_contrast.py` | Scores a target against glosses after removing the mean of its candidates' gloss vectors (the gloss-side contrast). It needs no new extraction. Worked examples are in `Analysis/gloss_mean_methods.ipynb`. |
 | `script.py` | Command-line interface with three commands: `sample`, `estimate` and `extract`. `--swaps` adds swapped sentences. |
-| `run_script.bash` | Runs the whole workflow end to end, including `Analysis/layer_study.py` and `Analysis/swap_study.py`. |
+| `run_script.bash` | Runs the whole workflow end to end, including `Analysis/layer_study.py`, `Analysis/swap_study.py` and `Analysis/gloss_mean_study.py`. |
 
 Swapped sentences are extracted with, for example,
 `extract --samples dev_natural_80 --swaps pos:0 pos+form:0 pos:1`. Each spec is `MATCH:DRAWS`. The vectors go

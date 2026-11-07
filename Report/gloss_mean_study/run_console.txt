@@ -1,0 +1,10 @@
+loaded vectors (62s)
+scored (93s); max |baseline - evaluation.layer_scores| = 2.98e-07
+baseline dev winner echo_last+mean/L5-7 (layer study: echo_last+mean/L5-7; reproduced: True)
+  glossmean dev winner echo_last+mean/L6-9    acc1 0.406  (at baseline config 0.380)
+  unitmean  dev winner echo_last+mean/L5      acc1 0.426  (at baseline config 0.404)
+  dot       dev winner plain_last+mean/L6     acc1 0.399  (at baseline config 0.358)
+  alpha tuned on dev: -0.3 (dev acc1 0.443)
+test_natural: baseline 0.365  glossmean 0.340  unitmean 0.357  dot 0.287
+test_balanced: baseline 0.475  glossmean 0.455  unitmean 0.465  dot 0.480
+saved /mnt/c/Users/Matt/Projects/WordSenseDisambiguation/Report/gloss_mean_study/results.json (220s)

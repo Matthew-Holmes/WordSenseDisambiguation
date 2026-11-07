@@ -28,3 +28,7 @@ $PY -m Processing.script estimate --samples $SAMPLES --swaps pos:0 pos+form:0 po
 $PY -u -m Processing.script extract --samples $SAMPLES --swaps pos:0 pos+form:0 pos:1
 $PY Analysis/swap_study.py
 $PY Analysis/swap_study_figures.py
+
+# 5. gloss-mean study: remove the mean of each target's candidate gloss vectors (no new extraction)
+$PY Analysis/gloss_mean_study.py
+$PY Analysis/gloss_mean_study_figures.py

@@ -409,7 +409,8 @@ marking (tense, agreement), but they don't.
 2. **Try the contrast on the gloss side instead (cheap: no new extraction).** All of a lemma's definition prompts
    start with the same "lemma:" prefix, so their vectors share a lemma component. Subtracting the mean of the
    candidates' gloss vectors before the cosine removes what the senses have in common. That is the analogue of your
-   idea where the error more plausibly lies, and it needs only the vectors already cached.
+   idea where the error more plausibly lies, and it needs only the vectors already cached. **Since tried:** it
+   doesn't help either. See [`GLOSS_MEAN_STUDY.md`](GLOSS_MEAN_STUDY.md).
 3. **Supervised sense centroids** remain the most promising step ([`LAYER_STUDY.md` §3.7](LAYER_STUDY.md#37-limitations-and-next-steps)).
    They replace glosses with the average vector of labelled dev examples of each sense, and they address the
    frequency gap directly.
